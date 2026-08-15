@@ -1,32 +1,31 @@
 <?php
-
 /*
 |--------------------------------------------------------------------------
-| PHARMACY MEDICINE INVENTORY SYSTEM  —  CONFIGURATION FILE
+| CONFIG — Supabase (Postgres) connection
 |--------------------------------------------------------------------------
-| Edit the values below to match your environment. This file is
-| included by index.php and should never be exposed publicly on
-| a production server (keep it outside the web root if possible,
-| or block it via .htaccess / server config).
-|--------------------------------------------------------------------------
+| Get these values from your Supabase project:
+|   Project Settings -> Database -> Connection string / Connection info
+|
+| Two connection options:
+|
+| 1) Direct connection (port 5432) — simplest, works fine for a small
+|    admin app like this one that isn't running behind serverless
+|    functions with lots of short-lived connections.
+|
+| 2) Session pooler (port 5432 via pooler host) or Transaction pooler
+|    (port 6543) — use this if your host opens/closes many connections
+|    per request (e.g. shared hosting spinning up PHP-FPM workers a lot)
+|    to avoid exhausting Postgres' connection limit.
+|
+| For a typical single PHP server, option 1 (direct) is fine.
 */
 
-/* ============================================================
-   DATABASE CONNECTION SETTINGS
-   >>> EDIT THESE FOUR VALUES TO MATCH YOUR MYSQL SERVER <<<
-============================================================ */
+define('DB_HOST', 'db.YOUR-PROJECT-REF.supabase.co'); // Project Settings -> Database -> Host
+define('DB_PORT', '5432');                            // 5432 direct, or 6543 for transaction pooler
+define('DB_NAME', 'postgres');                          // Supabase's default database name
+define('DB_USER', 'postgres');                          // Supabase's default database user
+define('DB_PASS', 'YOUR-DATABASE-PASSWORD');            // the password you set when creating the project
 
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'pharmacy_inventory');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_PORT', '3306');
-
-/* ============================================================
-   BASIC SETTINGS
-============================================================ */
-
-date_default_timezone_set('Asia/Manila');
-
+// App settings (unchanged from the original)
 $DEFAULT_LOW_STOCK = 200;
 $EXPIRY_WARNING_DAYS = 30;
