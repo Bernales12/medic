@@ -1,0 +1,17 @@
+
+    <html>
+    <head>
+    <meta charset="UTF-8">
+    <style>
+        table { border-collapse: collapse; }
+        th { background:#4c1d95; color:white; font-weight:bold; border:1px solid #999; padding:8px; }
+        td { border:1px solid #999; padding:6px; }
+    </style>
+    </head>
+    <body>
+
+    <h2>Medicine Dispensing / Stock-Out Report</h2>
+    <p>Generated: 15 Aug 2026 22:03:46</p>
+
+    <table>
+    <tr><th>Date</th><th>Medicine</th><th>Batch Number</th><th>Quantity Dispensed</th><th>Recipient</th></tr><tr><td>15 Aug 2026</td><td>Cetirizine 10 mg Tablet</td><td>BCH-2026-03X</td><td>1</td><td>hani</td></tr><tr><td>15 Aug 2026</td><td>Cetirizine 10 mg Tablet</td><td>BCH-2026-03X</td><td>1</td><td>hani</td></tr><tr><td>20 May 2026</td><td>Paracetamol 500 mg Tablet</td><td>BCH-2026-01A</td><td>10</td><td>John Doe</td></tr></table></body></html>
