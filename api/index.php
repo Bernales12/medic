@@ -3,10 +3,10 @@ session_start();
 
 /*
 |--------------------------------------------------------------------------
-| PHARMACY MEDICINE INVENTORY SYSTEM  —  MySQL Edition
+| PHARMACY MEDICINE INVENTORY SYSTEM  —  Supabase (Postgres) Edition
 |--------------------------------------------------------------------------
 | Features:
-| - Medicine inventory stored in a MySQL database
+| - Medicine inventory stored in a Supabase (Postgres) database
 | - Add / Edit / Delete
 | - Individual low-stock threshold
 | - 30-day expiration warning
@@ -34,6 +34,8 @@ $dbError = "";
 
 /* ============================================================
    DATABASE CONNECTION (PDO, singleton)
+   Uses the pgsql PDO driver to connect to Supabase's Postgres
+   database instead of MySQL.
 ============================================================ */
 
 function db()
@@ -44,7 +46,7 @@ function db()
         return $pdo;
     }
 
-    $dsn = "mysql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";charset=utf8mb4";
+    $dsn = "pgsql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";sslmode=require";
 
     $pdo = new PDO($dsn, DB_USER, DB_PASS, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -61,6 +63,11 @@ function db()
    Creates the tables (if missing) and seeds starter data
    (if the medicines table is empty) so the app works the
    moment the database itself exists.
+
+   NOTE: You can also run supabase_schema.sql once in the
+   Supabase SQL editor instead of relying on this. Either
+   path is safe — this function only creates tables that
+   don't already exist and only seeds empty tables.
 ============================================================ */
 
 function ensureSchema()
@@ -80,29 +87,29 @@ function ensureSchema()
             expiration_date DATE NULL,
             category VARCHAR(100) NOT NULL DEFAULT 'General',
             low_stock_threshold INT NOT NULL DEFAULT 200,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
     ");
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS dispense_logs (
-            id INT AUTO_INCREMENT PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             dispense_date DATE NOT NULL,
             inventory_name VARCHAR(255) NOT NULL,
             batch_number VARCHAR(100) NOT NULL DEFAULT '',
             qty_out INT NOT NULL DEFAULT 0,
             recipient VARCHAR(255) NOT NULL DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
     ");
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS users (
-            id INT AUTO_INCREMENT PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             username VARCHAR(100) NOT NULL UNIQUE,
             password_hash VARCHAR(255) NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
     ");
 
     $userCount = $pdo->query("SELECT COUNT(*) AS c FROM users")->fetch()['c'];
@@ -155,6 +162,8 @@ function h($value)
 
 /* ============================================================
    AUTHENTICATION HELPERS
+   (unchanged — still your own users table + password_hash /
+   password_verify, no Supabase Auth involved)
 ============================================================ */
 
 function findUserByUsername($username)
@@ -411,7 +420,7 @@ function processExpiredMedicinesDb()
         UPDATE medicines
         SET quantity = 0
         WHERE expiration_date IS NOT NULL
-          AND expiration_date <= CURDATE()
+          AND expiration_date <= CURRENT_DATE
           AND quantity > 0
     ");
 }
@@ -1900,7 +1909,9 @@ a:hover { color: var(--purple-700); }
 <div class="alert alert-danger">
 <strong><i class="fa-solid fa-database me-1"></i> Database connection failed.</strong>
 Check the <code>DB_HOST</code>, <code>DB_NAME</code>, <code>DB_USER</code>, and <code>DB_PASS</code>
-values at the top of this file, and make sure the <code>pharmacy_inventory</code> database exists.
+values at the top of <code>config.php</code>, and make sure the Supabase project's
+Postgres database is reachable (check your network/firewall allows outbound
+connections to Supabase, and that SSL is enabled).
 <div class="mt-1"><small class="text-muted"><?php echo h($dbError); ?></small></div>
 </div>
 <?php endif; ?>
