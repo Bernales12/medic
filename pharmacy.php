@@ -175,6 +175,29 @@ function findUserByUsername($username)
     return $row ?: null;
 }
 
+function findUserById($id)
+{
+    $stmt = db()->prepare("SELECT * FROM users WHERE id = ?");
+    $stmt->execute([$id]);
+    $row = $stmt->fetch();
+
+    return $row ?: null;
+}
+
+function updateUserCredentials($id, $newUsername, $newPasswordHash = null)
+{
+    if ($newPasswordHash !== null) {
+
+        $stmt = db()->prepare("UPDATE users SET username = ?, password_hash = ? WHERE id = ?");
+        $stmt->execute([$newUsername, $newPasswordHash, $id]);
+
+    } else {
+
+        $stmt = db()->prepare("UPDATE users SET username = ? WHERE id = ?");
+        $stmt->execute([$newUsername, $id]);
+    }
+}
+
 function isLoggedIn()
 {
     return !empty($_SESSION['user_id']);
@@ -1030,6 +1053,61 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     insertDispenseLog($dateIso, $fullName, $medItem['batch_number'] ?? '', $qtyOut, $recipient);
 
                     $message = "Successfully dispensed " . $qtyOut . " unit(s) of " . $fullName . ".";
+                    $messageType = "success";
+                }
+            }
+        }
+
+        /* ====================================================
+           UPDATE ACCOUNT (username / password)
+        ==================================================== */
+
+        elseif ($action === 'update_account') {
+
+            $currentUser = findUserById($_SESSION['user_id'] ?? 0);
+
+            $newUsername = trim($_POST['new_username'] ?? '');
+            $currentPasswordInput = $_POST['current_password'] ?? '';
+            $newPassword = $_POST['new_password'] ?? '';
+            $confirmPassword = $_POST['confirm_password'] ?? '';
+
+            if (!$currentUser || !password_verify($currentPasswordInput, $currentUser['password_hash'])) {
+
+                $message = "Current password is incorrect.";
+                $messageType = "danger";
+
+            } elseif ($newUsername === '') {
+
+                $message = "Username cannot be empty.";
+                $messageType = "danger";
+
+            } elseif ($newPassword !== '' && strlen($newPassword) < 6) {
+
+                $message = "New password must be at least 6 characters.";
+                $messageType = "danger";
+
+            } elseif ($newPassword !== '' && $newPassword !== $confirmPassword) {
+
+                $message = "New password and confirmation do not match.";
+                $messageType = "danger";
+
+            } else {
+
+                $existingUser = findUserByUsername($newUsername);
+
+                if ($existingUser && intval($existingUser['id']) !== intval($currentUser['id'])) {
+
+                    $message = "That username is already taken.";
+                    $messageType = "danger";
+
+                } else {
+
+                    $newHash = $newPassword !== '' ? password_hash($newPassword, PASSWORD_DEFAULT) : null;
+                    updateUserCredentials($currentUser['id'], $newUsername, $newHash);
+
+                    $_SESSION['username'] = $newUsername;
+
+                    $message = "Account settings updated successfully.";
                     $messageType = "success";
                 }
             }
@@ -1977,10 +2055,10 @@ a:hover { color: var(--purple-700); }
 
 <div class="d-flex align-items-center">
 
-<span class="text-muted small me-3">
+<button type="button" class="btn btn-sm btn-outline-primary me-2" data-bs-toggle="modal" data-bs-target="#accountModal">
 <i class="fa-solid fa-circle-user me-1"></i>
 <?php echo h(currentUsername()); ?>
-</span>
+</button>
 
 <a href="?export=inventory" class="btn btn-success btn-sm me-2">
 <i class="fa-solid fa-file-excel me-1"></i>Inventory Excel
@@ -1996,6 +2074,61 @@ a:hover { color: var(--purple-700); }
 
 </div>
 
+</div>
+
+
+<!-- ========================================================
+     ACCOUNT SETTINGS MODAL
+========================================================= -->
+
+<div class="modal fade" id="accountModal" tabindex="-1">
+<div class="modal-dialog">
+<div class="modal-content">
+
+<div class="modal-header">
+<h5 class="modal-title"><i class="fa-solid fa-user-gear me-2"></i>Account Settings</h5>
+<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+</div>
+
+<form method="POST">
+<input type="hidden" name="action" value="update_account">
+
+<div class="modal-body">
+
+<div class="mb-3">
+<label class="form-label">Username</label>
+<input type="text" name="new_username" class="form-control" value="<?php echo h(currentUsername()); ?>" required>
+</div>
+
+<hr>
+
+<div class="mb-3">
+<label class="form-label">Current Password</label>
+<input type="password" name="current_password" class="form-control" required autocomplete="current-password">
+<small class="text-muted">Required to confirm it's you.</small>
+</div>
+
+<div class="mb-3">
+<label class="form-label">New Password</label>
+<input type="password" name="new_password" class="form-control" autocomplete="new-password" placeholder="Leave blank to keep current password">
+<small class="text-muted">At least 6 characters. Leave blank to keep your current password.</small>
+</div>
+
+<div class="mb-3">
+<label class="form-label">Confirm New Password</label>
+<input type="password" name="confirm_password" class="form-control" autocomplete="new-password">
+</div>
+
+</div>
+
+<div class="modal-footer">
+<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+<button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1"></i>Save Changes</button>
+</div>
+
+</form>
+</div>
+</div>
 </div>
 
 
