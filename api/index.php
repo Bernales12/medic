@@ -532,8 +532,9 @@ function fetchMedicine($sku)
 function findMatchingMedicines($data, $excludeSku = null)
 {
     /*
-     * Match all identifying medicine information EXCEPT:
-     * batch_number, expiration_date, quantity, and sku.
+     * Match ONLY these medicine-identifying fields:
+     * inventory_name, strength, unit, dosage_form, generic_name, category.
+     * Ignore batch_number, expiration_date, quantity, sku, and low_stock_threshold.
      * Therefore different batches and different expiration dates merge.
      */
     $sql = "
@@ -545,7 +546,6 @@ function findMatchingMedicines($data, $excludeSku = null)
           AND LOWER(TRIM(COALESCE(dosage_form, ''))) = LOWER(TRIM(:dosage_form))
           AND LOWER(TRIM(COALESCE(generic_name, ''))) = LOWER(TRIM(:generic_name))
           AND LOWER(TRIM(COALESCE(category, ''))) = LOWER(TRIM(:category))
-          AND low_stock_threshold = :low_stock_threshold
     ";
 
     if ($excludeSku !== null && $excludeSku !== '') {
@@ -562,8 +562,7 @@ function findMatchingMedicines($data, $excludeSku = null)
         'unit' => $data['unit'],
         'dosage_form' => $data['dosage_form'],
         'generic_name' => $data['generic_name'],
-        'category' => $data['category'],
-        'low_stock_threshold' => intval($data['low_stock_threshold'])
+        'category' => $data['category']
     ];
 
     if ($excludeSku !== null && $excludeSku !== '') {
