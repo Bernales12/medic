@@ -19,6 +19,8 @@ session_start();
 | - Monthly dispensing report
 | - Excel-compatible inventory export
 | - Excel-compatible dispensing export
+| - Monthly Delivery Excel export
+| - Save/print delivery history by selected month
 | - DARK PURPLE THEME
 |--------------------------------------------------------------------------
 */
@@ -430,6 +432,13 @@ body {
 </style>
 </head>
 <body>
+<div id="appLoadingOverlay" aria-hidden="true">
+<div class="app-loading-card">
+<div class="app-loading-spinner"></div>
+<div class="app-loading-title">Saving...</div>
+<div class="app-loading-text" id="appLoadingText">Please wait while your changes are being saved.</div>
+</div></div>
+
 
 <div class="login-card">
 <div class="login-icon"><i class="fa-solid fa-pills"></i></div>
@@ -871,6 +880,65 @@ function saveDispenseExcel($dispenseLogs)
 }
 
 
+
+/* ============================================================
+   DOWNLOAD DELIVERY EXCEL — SELECTED MONTH / YEAR
+============================================================ */
+function downloadDeliveryExcel($month, $year, $deliveryLogs)
+{
+    $month = max(1, min(12, intval($month)));
+    $year = max(2000, min(2100, intval($year)));
+    $filename = "medicine_delivery_" . $year . "_" . str_pad($month, 2, '0', STR_PAD_LEFT) . ".xls";
+
+    header("Content-Type: application/vnd.ms-excel; charset=UTF-8");
+    header("Content-Disposition: attachment; filename=" . $filename);
+    header("Pragma: no-cache");
+    header("Expires: 0");
+
+    echo '<html><head><meta charset="UTF-8"><style>
+    table{border-collapse:collapse}th{background:#16a34a;color:#fff;border:1px solid #999;padding:8px}
+    td{border:1px solid #999;padding:6px}h2,h3{font-family:Arial,sans-serif}
+    </style></head><body>';
+
+    echo '<h2>Medicine Delivery / Stock-In Report</h2>';
+    echo '<h3>' . h(date('F Y', strtotime("$year-$month-01"))) . '</h3>';
+    echo '<table><tr>
+        <th>Date</th><th>Medicine</th><th>Strength</th><th>Unit</th>
+        <th>Dosage Form</th><th>Generic Name</th><th>Category</th>
+        <th>Batch Number</th><th>Expiration Date</th><th>Quantity Delivered</th>
+    </tr>';
+
+    $total = 0;
+    foreach ($deliveryLogs as $delivery) {
+        $iso = $delivery['date_iso'] ?? '';
+        $ts = $iso !== '' ? strtotime($iso) : false;
+        if ($ts === false || intval(date('m',$ts)) !== $month || intval(date('Y',$ts)) !== $year) continue;
+
+        $qty = intval($delivery['quantity_delivered'] ?? 0);
+        $total += $qty;
+        $fields = [
+            $delivery['date'] ?? '',
+            medicineFullName($delivery),
+            $delivery['strength'] ?? '',
+            $delivery['unit'] ?? '',
+            $delivery['dosage_form'] ?? '',
+            $delivery['generic_name'] ?? '',
+            $delivery['category'] ?? '',
+            $delivery['batch_number'] ?? '',
+            $delivery['expiration_date'] ?? '',
+            $qty
+        ];
+        echo '<tr>';
+        foreach ($fields as $field) echo '<td>' . h($field) . '</td>';
+        echo '</tr>';
+    }
+
+    echo '<tr><th colspan="9" style="text-align:right">TOTAL DELIVERED</th><th>' . number_format($total) . '</th></tr>';
+    echo '</table></body></html>';
+    exit;
+}
+
+
 /* ============================================================
    DOWNLOAD INVENTORY EXCEL
 ============================================================ */
@@ -1146,6 +1214,12 @@ if (empty($dbError)) {
         $year = intval($_GET['year'] ?? date('Y'));
         downloadDispenseExcel($month, $year, $dispenseLogs);
     }
+
+    if (isset($_GET['export']) && $_GET['export'] === 'delivery') {
+        $month = intval($_GET['month'] ?? date('m'));
+        $year = intval($_GET['year'] ?? date('Y'));
+        downloadDeliveryExcel($month, $year, $deliveryLogs);
+    }
 }
 
 
@@ -1223,6 +1297,8 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
         elseif ($action === 'edit_medicine') {
 
             $key = $_POST['medicine_key'] ?? '';
+            $returnTab = $_POST['return_tab'] ?? 'products';
+            $returnTab = in_array($returnTab, ['products', 'delivery'], true) ? $returnTab : 'products';
             $existing = fetchMedicine($key);
 
             if ($existing) {
@@ -1634,7 +1710,9 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['flash_message'] = $message ?? '';
         $_SESSION['flash_message_type'] = $messageType ?? 'success';
 
-        $redirectTab = $tabByAction[$action] ?? 'dashboard';
+        $redirectTab = ($action === 'edit_medicine' && isset($returnTab))
+            ? $returnTab
+            : ($tabByAction[$action] ?? 'dashboard');
         $baseUrl = strtok($_SERVER['REQUEST_URI'], '?');
 
         header('Location: ' . $baseUrl . '?tab=' . urlencode($redirectTab));
@@ -2481,6 +2559,16 @@ a:hover { color: var(--purple-700); }
 
 
 /* ============================================================
+   SAVE / UPDATE LOADING SCREEN
+============================================================ */
+#appLoadingOverlay{display:none;position:fixed;inset:0;z-index:99999;background:rgba(21,10,43,.72);backdrop-filter:blur(3px);align-items:center;justify-content:center}
+#appLoadingOverlay.show{display:flex}
+.app-loading-card{width:min(360px,calc(100vw - 32px));background:#fff;border-radius:16px;padding:28px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.30)}
+.app-loading-spinner{width:52px;height:52px;border:5px solid #e9ddff;border-top-color:#7c3aed;border-radius:50%;animation:pharmacySpin .8s linear infinite;margin:0 auto 16px}
+.app-loading-title{font-weight:800;color:#241a3d;margin-bottom:4px}.app-loading-text{color:#8b81a3;font-size:13px}
+@keyframes pharmacySpin{to{transform:rotate(360deg)}}
+
+/* ============================================================
    RESPONSIVE / MOBILE
 ============================================================ */
 
@@ -3159,6 +3247,7 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 <form method="POST">
 <input type="hidden" name="action" value="edit_medicine">
 <input type="hidden" name="medicine_key" value="<?php echo h($key); ?>">
+<input type="hidden" name="return_tab" value="products" class="edit-return-tab">
 
 <div class="modal-body">
 <div class="row g-3">
@@ -3241,7 +3330,12 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 
 <div class="tab-pane fade <?php echo $activeTab === 'delivery' ? 'show active' : ''; ?>" id="pane-delivery">
 
-<div class="d-flex justify-content-between align-items-center mb-3"><div><h4>Delivery Stock</h4><small class="text-muted">Receive stock and automatically add the delivered quantity to current inventory.</small></div></div>
+<div class="d-flex justify-content-between align-items-center mb-3">
+<div><h4>Delivery Stock</h4><small class="text-muted">Receive stock and automatically add the delivered quantity to current inventory.</small></div>
+<a href="?export=delivery&month=<?php echo $selectedDeliveryMonth; ?>&year=<?php echo $selectedDeliveryYear; ?>" class="btn btn-success">
+<i class="fa-solid fa-file-excel me-1"></i>Export Selected Month
+</a>
+</div>
 
 <div class="card-custom p-4 mb-4">
 <h5 class="mb-3"><i class="fa-solid fa-truck-fast text-primary me-2"></i>Receive Delivery</h5>
@@ -3262,7 +3356,7 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 </div></form>
 </div>
 
-<div class="card-custom p-4 mb-4"><div class="card-title-row"><div><h5>Inventory Products</h5><small class="text-muted">Edit inventory directly from the Delivery Stock module.</small></div></div><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Current Stock</th><th>Action</th></tr></thead><tbody><?php foreach ($medicineInventory as $key => $med): ?><tr><td class="fw-bold"><?php echo h(medicineFullName($med)); ?></td><td><?php echo h($med['batch_number'] ?? ''); ?></td><td><?php echo h($med['expiration_date'] ?? ''); ?></td><td class="fw-bold"><?php echo intval($med['quantity'] ?? 0); ?></td><td><button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editModal<?php echo h($key); ?>"><i class="fa-solid fa-pen me-1"></i>Edit Inventory</button></td></tr><?php endforeach; ?></tbody></table></div></div>
+<div class="card-custom p-4 mb-4"><div class="card-title-row"><div><h5>Inventory Products</h5><small class="text-muted">Edit inventory directly from the Delivery Stock module.</small></div></div><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Current Stock</th><th>Action</th></tr></thead><tbody><?php foreach ($medicineInventory as $key => $med): ?><tr><td class="fw-bold"><?php echo h(medicineFullName($med)); ?></td><td><?php echo h($med['batch_number'] ?? ''); ?></td><td><?php echo h($med['expiration_date'] ?? ''); ?></td><td class="fw-bold"><?php echo intval($med['quantity'] ?? 0); ?></td><td><button type="button" class="btn btn-sm btn-primary delivery-edit-btn" data-bs-toggle="modal" data-bs-target="#editModal<?php echo h($key); ?>" data-return-tab="delivery"><i class="fa-solid fa-pen me-1"></i>Edit Inventory</button></td></tr><?php endforeach; ?></tbody></table></div></div>
 
 <div class="card-custom p-4 mb-4"><div class="card-title-row"><div><h5><i class="fa-solid fa-calendar-day text-success me-2"></i>Today's Delivery Report</h5><small class="text-muted"><?php echo date('F j, Y'); ?></small></div><span class="badge bg-success"><?php echo number_format($todayDeliveryTotal); ?> units delivered</span></div><?php if (empty($todayDeliveryByMedicine)): ?><div class="text-muted text-center py-4">No deliveries recorded today.</div><?php else: ?><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Quantity Delivered Today</th></tr></thead><tbody><?php foreach ($todayDeliveryByMedicine as $name => $qty): ?><tr><td class="fw-bold"><?php echo h($name); ?></td><td class="text-success fw-bold">+<?php echo number_format($qty); ?> units</td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?></div>
 
@@ -3546,7 +3640,9 @@ No medicines added yet. Select a medicine above and click "Add to List".
 ========================================================= -->
 
 <div class="card-custom p-4 mb-4"><div class="card-title-row"><div><h5><i class="fa-solid fa-truck-fast text-success me-2"></i>Delivery / Stock-In Report</h5><small class="text-muted">Quantity delivered for every medicine.</small></div><span class="badge bg-success"><?php echo number_format($monthlyDeliveryTotal); ?> units this month</span></div>
-<form method="GET" class="row g-2 mb-4"><div class="col-md-3"><label class="form-label">Month</label><select name="delivery_month" class="form-select"><?php for ($m = 1; $m <= 12; $m++): ?><option value="<?php echo $m; ?>" <?php echo $m == $selectedDeliveryMonth ? 'selected' : ''; ?>><?php echo date('F', mktime(0,0,0,$m,1)); ?></option><?php endfor; ?></select></div><div class="col-md-2"><label class="form-label">Year</label><select name="delivery_year" class="form-select"><?php for ($y = date('Y') - 3; $y <= date('Y') + 1; $y++): ?><option value="<?php echo $y; ?>" <?php echo $y == $selectedDeliveryYear ? 'selected' : ''; ?>><?php echo $y; ?></option><?php endfor; ?></select></div><div class="col-md-3 d-flex align-items-end"><button class="btn btn-success"><i class="fa-solid fa-filter me-1"></i>Show Delivery Report</button></div></form>
+<form method="GET" class="row g-2 mb-4"><div class="col-md-3"><label class="form-label">Month</label><select name="delivery_month" class="form-select"><?php for ($m = 1; $m <= 12; $m++): ?><option value="<?php echo $m; ?>" <?php echo $m == $selectedDeliveryMonth ? 'selected' : ''; ?>><?php echo date('F', mktime(0,0,0,$m,1)); ?></option><?php endfor; ?></select></div><div class="col-md-2"><label class="form-label">Year</label><select name="delivery_year" class="form-select"><?php for ($y = date('Y') - 3; $y <= date('Y') + 1; $y++): ?><option value="<?php echo $y; ?>" <?php echo $y == $selectedDeliveryYear ? 'selected' : ''; ?>><?php echo $y; ?></option><?php endfor; ?></select></div><div class="col-md-3 d-flex align-items-end"><button class="btn btn-success"><i class="fa-solid fa-filter me-1"></i>Show Delivery Report</button></div>
+<div class="col-md-3 d-flex align-items-end"><a class="btn btn-outline-success w-100" href="?export=delivery&month=<?php echo $selectedDeliveryMonth; ?>&year=<?php echo $selectedDeliveryYear; ?>"><i class="fa-solid fa-file-excel me-1"></i>Save Selected Month to Excel</a></div>
+</form>
 <div class="alert alert-success"><strong><?php echo date('F Y', strtotime("$selectedDeliveryYear-$selectedDeliveryMonth-01")); ?></strong> &mdash; Total delivered: <strong><?php echo number_format($monthlyDeliveryTotal); ?> units</strong></div>
 <h6 class="fw-bold">Delivery Quantity by Medicine</h6><?php if (empty($monthlyDeliveryByMedicine)): ?><div class="text-muted text-center py-4">No deliveries recorded for this month.</div><?php else: ?><div class="table-responsive mb-4"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Total Delivered</th></tr></thead><tbody><?php foreach ($monthlyDeliveryByMedicine as $name => $qty): ?><tr><td class="fw-bold"><?php echo h($name); ?></td><td class="text-success fw-bold">+<?php echo number_format($qty); ?> units</td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?>
 <h6 class="fw-bold">Detailed Delivery Transactions</h6><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Quantity Delivered</th></tr></thead><tbody><?php $hasMonthlyDelivery=false; foreach ($deliveryLogs as $delivery): $ts=!empty($delivery['date_iso'])?strtotime($delivery['date_iso']):false; if($ts===false || intval(date('m',$ts))!==$selectedDeliveryMonth || intval(date('Y',$ts))!==$selectedDeliveryYear) continue; $hasMonthlyDelivery=true; ?><tr><td><?php echo h($delivery['date']); ?></td><td class="fw-bold"><?php echo h(medicineFullName($delivery)); ?></td><td><?php echo h($delivery['batch_number']); ?></td><td><?php echo h($delivery['expiration_date']); ?></td><td class="text-success fw-bold">+<?php echo intval($delivery['quantity_delivered']); ?></td></tr><?php endforeach; if(!$hasMonthlyDelivery): ?><tr><td colspan="5" class="text-center text-muted">No delivery transactions for this month.</td></tr><?php endif; ?></tbody></table></div></div>
@@ -3623,7 +3719,59 @@ No medicines added yet. Select a medicine above and click "Add to List".
 
 
 <script>
-(function(){var s=document.getElementById('deliverySku');if(!s)return;s.addEventListener('change',function(){var o=s.options[s.selectedIndex];if(!o||!o.value)return;document.getElementById('deliveryName').value=o.dataset.name||'';document.getElementById('deliveryStrength').value=o.dataset.strength||'';document.getElementById('deliveryUnit').value=o.dataset.unit||'mg';document.getElementById('deliveryForm').value=o.dataset.form||'';document.getElementById('deliveryGeneric').value=o.dataset.generic||'';document.getElementById('deliveryCategory').value=o.dataset.category||'';document.getElementById('deliveryThreshold').value=o.dataset.threshold||'200';});})();
+(function(){
+    var s=document.getElementById('deliverySku');
+    if(s){
+        s.addEventListener('change',function(){
+            var o=s.options[s.selectedIndex];
+            if(!o||!o.value)return;
+            document.getElementById('deliveryName').value=o.dataset.name||'';
+            document.getElementById('deliveryStrength').value=o.dataset.strength||'';
+            document.getElementById('deliveryUnit').value=o.dataset.unit||'mg';
+            document.getElementById('deliveryForm').value=o.dataset.form||'';
+            document.getElementById('deliveryGeneric').value=o.dataset.generic||'';
+            document.getElementById('deliveryCategory').value=o.dataset.category||'';
+            document.getElementById('deliveryThreshold').value=o.dataset.threshold||'200';
+        });
+    }
+
+    document.querySelectorAll('.delivery-edit-btn').forEach(function(button){
+        button.addEventListener('click',function(){
+            var modal=document.querySelector(button.getAttribute('data-bs-target'));
+            if(!modal)return;
+            var input=modal.querySelector('.edit-return-tab');
+            if(input)input.value=button.getAttribute('data-return-tab')||'products';
+        });
+    });
+
+    var overlay=document.getElementById('appLoadingOverlay');
+    var loadingText=document.getElementById('appLoadingText');
+
+    document.querySelectorAll('form[method="POST"],form[method="post"]').forEach(function(form){
+        form.addEventListener('submit',function(){
+            if(!overlay)return;
+            var action=form.querySelector('input[name="action"]');
+            var value=action?action.value:'';
+
+            if(value==='receive_delivery'){
+                loadingText.textContent='Adding delivery stock and saving delivery history...';
+            }else if(value==='edit_medicine'){
+                loadingText.textContent='Updating inventory information...';
+            }else if(value==='stock_out_batch'||value==='stock_out'){
+                loadingText.textContent='Processing dispense...';
+            }else{
+                loadingText.textContent='Please wait while your changes are being saved.';
+            }
+
+            overlay.classList.add('show');
+            overlay.setAttribute('aria-hidden','false');
+
+            form.querySelectorAll('button[type="submit"],button:not([type])').forEach(function(btn){
+                btn.disabled=true;
+            });
+        });
+    });
+})();
 </script>
 
 <!-- ==========================================================
