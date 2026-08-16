@@ -112,28 +112,6 @@ function ensureSchema()
         )
     ");
 
-    /*
-     * Persistent authentication sessions.
-     *
-     * PHP's normal file-based sessions are not reliable on serverless
-     * deployments such as Vercel because instances can change between
-     * requests. Store the login token in Supabase/Postgres instead.
-     */
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS auth_sessions (
-            id BIGSERIAL PRIMARY KEY,
-            user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            token_hash VARCHAR(128) NOT NULL UNIQUE,
-            expires_at TIMESTAMP NOT NULL,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-    ");
-
-    $pdo->exec("
-        DELETE FROM auth_sessions
-        WHERE expires_at <= CURRENT_TIMESTAMP
-    ");
-
     $userCount = $pdo->query("SELECT COUNT(*) AS c FROM users")->fetch()['c'];
 
     if (intval($userCount) === 0) {
@@ -225,87 +203,126 @@ function authCookieName()
     return 'pharmacy_auth';
 }
 
-function authCookieOptions($expires)
+function authSecret()
 {
-    $isHttps = (
-        (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
-        (isset($_SERVER['SERVER_PORT']) && intval($_SERVER['SERVER_PORT']) === 443) ||
-        (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
-    );
+    if (defined('AUTH_SECRET') && AUTH_SECRET !== '') {
+        return AUTH_SECRET;
+    }
 
-    return [
-        'expires' => $expires,
-        'path' => '/',
-        'secure' => $isHttps,
-        'httponly' => true,
-        'samesite' => 'Lax'
-    ];
+    return hash('sha256', DB_PASS . '|pharmacy-auth-v2');
 }
 
-function createAuthSession($userId)
+function base64UrlEncode($value)
 {
-    $token = bin2hex(random_bytes(32));
-    $tokenHash = hash('sha256', $token);
+    return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+}
 
-    /*
-     * 7-day persistent login.
-     * The token itself is only stored in the browser.
-     * The database stores only its SHA-256 hash.
-     */
-    $expiresAt = date('Y-m-d H:i:s', time() + (7 * 24 * 60 * 60));
+function base64UrlDecode($value)
+{
+    $remainder = strlen($value) % 4;
 
-    $stmt = db()->prepare("
-        INSERT INTO auth_sessions (user_id, token_hash, expires_at)
-        VALUES (?, ?, ?)
-    ");
-    $stmt->execute([$userId, $tokenHash, $expiresAt]);
+    if ($remainder) {
+        $value .= str_repeat('=', 4 - $remainder);
+    }
 
-    setcookie(
-        authCookieName(),
-        $token,
-        authCookieOptions(time() + (7 * 24 * 60 * 60))
-    );
+    return base64_decode(strtr($value, '-_', '+/'));
+}
 
-    $_SESSION['user_id'] = intval($userId);
+function setAuthCookie($user)
+{
+    $payload = base64UrlEncode(json_encode([
+        'id' => intval($user['id']),
+        'username' => $user['username'],
+        'exp' => time() + (7 * 24 * 60 * 60)
+    ]));
 
-    return $token;
+    $signature = hash_hmac('sha256', $payload, authSecret());
+
+    setcookie(authCookieName(), $payload . '.' . $signature, [
+        'expires' => time() + (7 * 24 * 60 * 60),
+        'path' => '/',
+        'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+        'httponly' => true,
+        'samesite' => 'Lax'
+    ]);
+
+    $_SESSION['user_id'] = intval($user['id']);
+    $_SESSION['username'] = $user['username'];
+}
+
+function clearAuthCookie()
+{
+    setcookie(authCookieName(), '', [
+        'expires' => time() - 3600,
+        'path' => '/',
+        'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+        'httponly' => true,
+        'samesite' => 'Lax'
+    ]);
+
+    $_SESSION = [];
+    session_destroy();
 }
 
 function getAuthenticatedUser()
 {
-    $token = $_COOKIE[authCookieName()] ?? '';
+    static $checked = false;
+    static $cachedUser = null;
 
-    if ($token === '' || !preg_match('/^[a-f0-9]{64}$/i', $token)) {
+    if ($checked) {
+        return $cachedUser;
+    }
+
+    $checked = true;
+
+    if (!empty($_SESSION['user_id'])) {
+        $stmt = db()->prepare("SELECT * FROM users WHERE id = ?");
+        $stmt->execute([intval($_SESSION['user_id'])]);
+        $user = $stmt->fetch();
+
+        if ($user) {
+            $cachedUser = $user;
+            return $cachedUser;
+        }
+    }
+
+    $cookie = $_COOKIE[authCookieName()] ?? '';
+
+    if ($cookie === '' || strpos($cookie, '.') === false) {
         return null;
     }
 
-    $tokenHash = hash('sha256', $token);
+    [$payload, $signature] = explode('.', $cookie, 2);
+    $expected = hash_hmac('sha256', $payload, authSecret());
 
-    $stmt = db()->prepare("
-        SELECT u.*
-        FROM auth_sessions s
-        INNER JOIN users u ON u.id = s.user_id
-        WHERE s.token_hash = ?
-          AND s.expires_at > CURRENT_TIMESTAMP
-        LIMIT 1
-    ");
-    $stmt->execute([$tokenHash]);
+    if (!hash_equals($expected, $signature)) {
+        return null;
+    }
 
+    $decoded = base64UrlDecode($payload);
+    $data = json_decode($decoded ?: '', true);
+
+    if (!is_array($data) || empty($data['id']) || empty($data['username']) || empty($data['exp'])) {
+        return null;
+    }
+
+    if (intval($data['exp']) < time()) {
+        return null;
+    }
+
+    $stmt = db()->prepare("SELECT * FROM users WHERE id = ? AND username = ?");
+    $stmt->execute([intval($data['id']), $data['username']]);
     $user = $stmt->fetch();
 
     if (!$user) {
-        setcookie(
-            authCookieName(),
-            '',
-            authCookieOptions(time() - 3600)
-        );
         return null;
     }
 
     $_SESSION['user_id'] = intval($user['id']);
     $_SESSION['username'] = $user['username'];
 
-    return $user;
+    $cachedUser = $user;
+    return $cachedUser;
 }
 
 function isLoggedIn()
@@ -316,28 +333,7 @@ function isLoggedIn()
 function currentUsername()
 {
     $user = getAuthenticatedUser();
-    return $user ? ($user['username'] ?? '') : '';
-}
-
-function destroyAuthSession()
-{
-    $token = $_COOKIE[authCookieName()] ?? '';
-
-    if ($token !== '' && preg_match('/^[a-f0-9]{64}$/i', $token)) {
-        $tokenHash = hash('sha256', $token);
-
-        $stmt = db()->prepare("DELETE FROM auth_sessions WHERE token_hash = ?");
-        $stmt->execute([$tokenHash]);
-    }
-
-    setcookie(
-        authCookieName(),
-        '',
-        authCookieOptions(time() - 3600)
-    );
-
-    $_SESSION = [];
-    session_destroy();
+    return $user['username'] ?? '';
 }
 
 function renderLoginPage($loginError = '')
@@ -533,168 +529,49 @@ function fetchMedicine($sku)
     return $row ?: null;
 }
 
-function normalizeMedicineValue($value)
+function findMatchingMedicines($data, $excludeSku = null)
 {
     /*
-     * Normalize text so accidental spaces/case differences do not
-     * create duplicate medicine rows.
-     */
-    return mb_strtolower(trim((string)$value), 'UTF-8');
-}
-
-function findAllMedicineMatches($data, $excludeSku = null)
-{
-    /*
-     * Matching rules:
-     * - SKU is NOT matched.
-     * - Quantity is NOT matched.
-     * - Batch number is NOT matched, so different batches still merge.
-     * - Expiration date MUST match.
-     * - All other medicine information MUST match.
-     *
-     * This means:
-     *   Same medicine + same expiration + same batch -> MERGE
-     *   Same medicine + same expiration + different batch -> MERGE
-     *   Same medicine + different expiration -> DO NOT MERGE
+     * Match all identifying medicine information EXCEPT:
+     * batch_number, expiration_date, quantity, and sku.
+     * Therefore different batches and different expiration dates merge.
      */
     $sql = "
         SELECT *
         FROM medicines
-        WHERE LOWER(TRIM(inventory_name)) = ?
-          AND LOWER(TRIM(strength)) = ?
-          AND LOWER(TRIM(unit)) = ?
-          AND LOWER(TRIM(dosage_form)) = ?
-          AND LOWER(TRIM(generic_name)) = ?
-          AND LOWER(TRIM(category)) = ?
-          AND low_stock_threshold = ?
-          AND expiration_date IS NOT DISTINCT FROM ?
+        WHERE LOWER(TRIM(COALESCE(inventory_name, ''))) = LOWER(TRIM(:inventory_name))
+          AND LOWER(TRIM(COALESCE(strength, ''))) = LOWER(TRIM(:strength))
+          AND LOWER(TRIM(COALESCE(unit, ''))) = LOWER(TRIM(:unit))
+          AND LOWER(TRIM(COALESCE(dosage_form, ''))) = LOWER(TRIM(:dosage_form))
+          AND LOWER(TRIM(COALESCE(generic_name, ''))) = LOWER(TRIM(:generic_name))
+          AND LOWER(TRIM(COALESCE(category, ''))) = LOWER(TRIM(:category))
+          AND low_stock_threshold = :low_stock_threshold
     ";
 
+    if ($excludeSku !== null && $excludeSku !== '') {
+        $sql .= " AND sku <> :exclude_sku";
+    }
+
+    $sql .= " ORDER BY created_at ASC, sku ASC FOR UPDATE";
+
+    $stmt = db()->prepare($sql);
+
     $params = [
-        normalizeMedicineValue($data['inventory_name']),
-        normalizeMedicineValue($data['strength']),
-        normalizeMedicineValue($data['unit']),
-        normalizeMedicineValue($data['dosage_form']),
-        normalizeMedicineValue($data['generic_name']),
-        normalizeMedicineValue($data['category']),
-        intval($data['low_stock_threshold']),
-        !empty($data['expiration_date']) ? $data['expiration_date'] : null
+        'inventory_name' => $data['inventory_name'],
+        'strength' => $data['strength'],
+        'unit' => $data['unit'],
+        'dosage_form' => $data['dosage_form'],
+        'generic_name' => $data['generic_name'],
+        'category' => $data['category'],
+        'low_stock_threshold' => intval($data['low_stock_threshold'])
     ];
 
     if ($excludeSku !== null && $excludeSku !== '') {
-        $sql .= " AND sku <> ?";
-        $params[] = $excludeSku;
+        $params['exclude_sku'] = $excludeSku;
     }
 
-    $sql .= " ORDER BY created_at ASC, sku ASC";
-
-    $stmt = db()->prepare($sql);
     $stmt->execute($params);
-
     return $stmt->fetchAll();
-}
-
-function mergeMedicineRows($matchingRows, $incomingQuantity, $newBatchNumber, $incomingData, $extraDeleteSku = null)
-{
-    if (empty($matchingRows)) {
-        return null;
-    }
-
-    $pdo = db();
-
-    /*
-     * Keep the oldest existing SKU as the master row.
-     * This avoids changing the SKU unnecessarily.
-     */
-    $master = $matchingRows[0];
-    $totalQuantity = max(0, intval($incomingQuantity));
-
-    foreach ($matchingRows as $row) {
-        $totalQuantity += intval($row['quantity']);
-    }
-
-    /*
-     * The newest submitted batch number is always retained.
-     * If the new batch field is empty, keep the master batch.
-     */
-    $finalBatch = trim((string)$newBatchNumber);
-    if ($finalBatch === '') {
-        $finalBatch = $master['batch_number'] ?? '';
-    }
-
-    $pdo->beginTransaction();
-
-    try {
-        /*
-         * Update the master with the complete medicine information.
-         * Batch is the newest submitted batch.
-         */
-        $stmt = $pdo->prepare("
-            UPDATE medicines
-            SET
-                inventory_name = :inventory_name,
-                strength = :strength,
-                unit = :unit,
-                dosage_form = :dosage_form,
-                generic_name = :generic_name,
-                quantity = :quantity,
-                batch_number = :batch_number,
-                expiration_date = :expiration_date,
-                category = :category,
-                low_stock_threshold = :low_stock_threshold
-            WHERE sku = :sku
-        ");
-
-        $stmt->execute([
-            'inventory_name' => $incomingData['inventory_name'],
-            'strength' => $incomingData['strength'],
-            'unit' => $incomingData['unit'],
-            'dosage_form' => $incomingData['dosage_form'],
-            'generic_name' => $incomingData['generic_name'],
-            'quantity' => $totalQuantity,
-            'batch_number' => $finalBatch,
-            'expiration_date' => !empty($incomingData['expiration_date']) ? $incomingData['expiration_date'] : null,
-            'category' => $incomingData['category'],
-            'low_stock_threshold' => intval($incomingData['low_stock_threshold']),
-            'sku' => $master['sku']
-        ]);
-
-        /*
-         * Delete every duplicate row except the master.
-         */
-        $delete = $pdo->prepare("DELETE FROM medicines WHERE sku = ?");
-
-        foreach ($matchingRows as $row) {
-            if ($row['sku'] !== $master['sku']) {
-                $delete->execute([$row['sku']]);
-            }
-        }
-
-        /*
-         * When an EDIT caused the merge, delete the original
-         * edited row inside the same transaction.
-         */
-        if ($extraDeleteSku !== null && $extraDeleteSku !== '' && $extraDeleteSku !== $master['sku']) {
-            $delete->execute([$extraDeleteSku]);
-        }
-
-        $pdo->commit();
-
-        return [
-            'sku' => $master['sku'],
-            'quantity' => $totalQuantity,
-            'batch_number' => $finalBatch,
-            'removed_duplicates' => max(0, count($matchingRows) - 1)
-        ];
-
-    } catch (Throwable $e) {
-
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-
-        throw $e;
-    }
 }
 
 function insertMedicine($sku, $data)
@@ -1093,7 +970,7 @@ try {
     -------------------------------------------------------- */
 
     if (isset($_GET['logout'])) {
-        destroyAuthSession();
+        clearAuthCookie();
         header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
         exit;
     }
@@ -1112,13 +989,7 @@ try {
 
         if ($user && password_verify($passwordInput, $user['password_hash'])) {
 
-            /*
-             * Regenerate the PHP session ID for normal session security,
-             * then create a persistent DB-backed authentication cookie.
-             */
-            session_regenerate_id(true);
-            createAuthSession($user['id']);
-            $_SESSION['username'] = $user['username'];
+            setAuthCookie($user);
 
             header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
             exit;
@@ -1195,68 +1066,108 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'add_medicine') {
 
-            $inventoryName = trim($_POST['inventory_name'] ?? '');
-            $strength = trim($_POST['strength'] ?? '');
-            $unit = trim($_POST['unit'] ?? '');
-            $dosageForm = trim($_POST['dosage_form'] ?? '');
-            $genericName = trim($_POST['generic_name'] ?? '');
-            $quantity = max(0, intval($_POST['quantity'] ?? 0));
-            $batchNumber = trim($_POST['batch_number'] ?? '');
-            $expirationDate = $_POST['expiration_date'] ?? '';
-            $category = trim($_POST['category'] ?? '');
-            $lowStockThreshold = max(1, intval($_POST['low_stock_threshold'] ?? $DEFAULT_LOW_STOCK));
+            $medicineData = [
+                'inventory_name' => trim($_POST['inventory_name'] ?? ''),
+                'strength' => trim($_POST['strength'] ?? ''),
+                'unit' => trim($_POST['unit'] ?? ''),
+                'dosage_form' => trim($_POST['dosage_form'] ?? ''),
+                'generic_name' => trim($_POST['generic_name'] ?? ''),
+                'quantity' => max(0, intval($_POST['quantity'] ?? 0)),
+                'batch_number' => trim($_POST['batch_number'] ?? ''),
+                'expiration_date' => $_POST['expiration_date'] ?? '',
+                'category' => trim($_POST['category'] ?? ''),
+                'low_stock_threshold' => max(1, intval($_POST['low_stock_threshold'] ?? $DEFAULT_LOW_STOCK))
+            ];
 
-            if ($inventoryName === '') {
+            if ($medicineData['inventory_name'] === '') {
+
                 $message = "Medicine name is required.";
                 $messageType = "danger";
+
             } else {
-                $medicineData = [
-                    'inventory_name' => $inventoryName,
-                    'strength' => $strength,
-                    'unit' => $unit,
-                    'dosage_form' => $dosageForm,
-                    'generic_name' => $genericName,
-                    'quantity' => $quantity,
-                    'batch_number' => $batchNumber,
-                    'expiration_date' => $expirationDate,
-                    'category' => $category,
-                    'low_stock_threshold' => $lowStockThreshold
-                ];
 
-                /*
-                 * Find ALL matching rows.
-                 *
-                 * Batch is deliberately ignored.
-                 * Expiration must match.
-                 */
-                $matches = findAllMedicineMatches($medicineData);
+                $pdo = db();
+                $pdo->beginTransaction();
 
-                if (!empty($matches)) {
+                try {
+                    // Batch number and expiration date are intentionally ignored.
+                    // ALL matching rows are combined.
+                    $matches = findMatchingMedicines($medicineData);
 
-                    $merged = mergeMedicineRows(
-                        $matches,
-                        $quantity,
-                        $batchNumber,
-                        $medicineData
-                    );
+                    if (!empty($matches)) {
 
-                    $removed = intval($merged['removed_duplicates']);
+                        $totalQuantity = intval($medicineData['quantity']);
 
-                    $message =
-                        "Medicine stock merged successfully. " .
-                        "Total stock is now " . number_format($merged['quantity']) . " unit(s)." .
-                        ($removed > 0 ? " Removed " . $removed . " duplicate row(s)." : "") .
-                        " Newest batch number kept: " . ($merged['batch_number'] ?: 'N/A') . ".";
+                        foreach ($matches as $row) {
+                            $totalQuantity += intval($row['quantity']);
+                        }
 
-                    $messageType = "success";
+                        $targetSku = $matches[0]['sku'];
 
-                } else {
+                        $stmt = $pdo->prepare("
+                            UPDATE medicines
+                            SET
+                                inventory_name = :inventory_name,
+                                strength = :strength,
+                                unit = :unit,
+                                dosage_form = :dosage_form,
+                                generic_name = :generic_name,
+                                quantity = :quantity,
+                                batch_number = :batch_number,
+                                expiration_date = :expiration_date,
+                                category = :category,
+                                low_stock_threshold = :low_stock_threshold
+                            WHERE sku = :sku
+                        ");
 
-                    $autoSku = generateMedicineKey();
-                    insertMedicine($autoSku, $medicineData);
+                        $stmt->execute([
+                            'sku' => $targetSku,
+                            'inventory_name' => $medicineData['inventory_name'],
+                            'strength' => $medicineData['strength'],
+                            'unit' => $medicineData['unit'],
+                            'dosage_form' => $medicineData['dosage_form'],
+                            'generic_name' => $medicineData['generic_name'],
+                            'quantity' => $totalQuantity,
+                            'batch_number' => $medicineData['batch_number'],
+                            'expiration_date' => $medicineData['expiration_date'] ?: null,
+                            'category' => $medicineData['category'],
+                            'low_stock_threshold' => $medicineData['low_stock_threshold']
+                        ]);
 
-                    $message = "Medicine successfully added to inventory.";
-                    $messageType = "success";
+                        foreach ($matches as $row) {
+                            if ($row['sku'] !== $targetSku) {
+                                $delete = $pdo->prepare("DELETE FROM medicines WHERE sku = ?");
+                                $delete->execute([$row['sku']]);
+                            }
+                        }
+
+                        $pdo->commit();
+
+                        $message =
+                            "Medicine already exists. All matching stock was combined. " .
+                            "Total stock: " . number_format($totalQuantity) .
+                            ". Newest batch number and expiration date were kept.";
+
+                        $messageType = "success";
+
+                    } else {
+
+                        $autoSku = generateMedicineKey();
+                        insertMedicine($autoSku, $medicineData);
+
+                        $pdo->commit();
+
+                        $message = "Medicine successfully added to inventory.";
+                        $messageType = "success";
+                    }
+
+                } catch (Throwable $e) {
+
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+
+                    throw $e;
                 }
             }
         }
@@ -1273,7 +1184,7 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($existing) {
 
-                $updatedData = [
+                $medicineData = [
                     'inventory_name' => trim($_POST['inventory_name'] ?? ''),
                     'strength' => trim($_POST['strength'] ?? ''),
                     'unit' => trim($_POST['unit'] ?? ''),
@@ -1286,47 +1197,62 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     'low_stock_threshold' => max(1, intval($_POST['low_stock_threshold'] ?? $DEFAULT_LOW_STOCK))
                 ];
 
-                /*
-                 * Find ALL other rows that match.
-                 * The current row is excluded so its quantity is
-                 * counted exactly once as incoming/edit quantity.
-                 */
-                $matches = findAllMedicineMatches($updatedData, $key);
+                $pdo = db();
+                $pdo->beginTransaction();
 
-                if (!empty($matches)) {
+                try {
+                    // Find OTHER rows with the same identifying information.
+                    // Batch and expiration are ignored.
+                    $matches = findMatchingMedicines($medicineData, $key);
 
-                    $merged = mergeMedicineRows(
-                        $matches,
-                        $updatedData['quantity'],
-                        $updatedData['batch_number'],
-                        $updatedData,
-                        $key
-                    );
+                    if (!empty($matches)) {
 
-                    $removed = intval($merged['removed_duplicates']) + 1;
+                        // Edited quantity + every duplicate's quantity.
+                        $totalQuantity = intval($medicineData['quantity']);
 
-                    $message =
-                        "Medicine updated and merged successfully. " .
-                        "Total stock is now " . number_format($merged['quantity']) . " unit(s)." .
-                        " Removed " . $removed . " duplicate row(s)." .
-                        " Newest batch number kept: " . ($merged['batch_number'] ?: 'N/A') . ".";
+                        foreach ($matches as $row) {
+                            $totalQuantity += intval($row['quantity']);
+                        }
 
-                    $messageType = "success";
+                        $medicineData['quantity'] = $totalQuantity;
 
-                } else {
+                        updateMedicine($key, $medicineData);
 
-                    $updated = updateMedicine($key, $updatedData);
+                        foreach ($matches as $row) {
+                            $delete = $pdo->prepare("DELETE FROM medicines WHERE sku = ?");
+                            $delete->execute([$row['sku']]);
+                        }
 
-                    if ($updated) {
+                        $pdo->commit();
+
+                        $message =
+                            "Medicine updated and combined. Total stock: " .
+                            number_format($totalQuantity) .
+                            ". Newest batch number and expiration date were kept.";
+
+                        $messageType = "success";
+
+                    } else {
+
+                        updateMedicine($key, $medicineData);
+
+                        $pdo->commit();
+
                         $message = "Medicine information successfully updated.";
                         $messageType = "success";
-                    } else {
-                        $message = "No changes were made.";
-                        $messageType = "warning";
                     }
+
+                } catch (Throwable $e) {
+
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+
+                    throw $e;
                 }
 
             } else {
+
                 $message = "Medicine could not be found.";
                 $messageType = "danger";
             }
@@ -2323,7 +2249,6 @@ h4, h5, h6 { color: var(--purple-950); }
 .alert { border-radius: 12px; }
 .alert-danger { color: #881337; background: #fff1f2; border-color: #fecdd3; }
 .alert-success { color: #166534; background: #f0fdf4; border-color: #bbf7d0; }
-.alert-primary { color: #4c1d95; background: var(--purple-100); border-color: var(--purple-200); }
 
 
 /* ============================================================
@@ -3211,15 +3136,6 @@ $expired = $exp !== false && $exp <= $todayTimestamp;
 </option>
 <?php endforeach; ?>
 </select>
-
-<div id="selectedStockInfo" class="mt-2" style="display:none;">
-    <div class="alert alert-primary py-2 px-3 mb-0">
-        <i class="fa-solid fa-boxes-stacked me-2"></i>
-        <strong>Available Stock:</strong>
-        <span id="selectedStockCount">0</span> units
-        <span id="selectedBatchInfo" class="ms-2"></span>
-    </div>
-</div>
 </div>
 
 <div class="col-md-2">
@@ -3641,113 +3557,13 @@ No medicines added yet. Select a medicine above and click "Add to List".
     var confirmBtn = document.getElementById('confirmDispenseBtn');
     var dispenseForm = document.getElementById('dispenseForm');
 
-    var selectedStockInfo = document.getElementById('selectedStockInfo');
-    var selectedStockCount = document.getElementById('selectedStockCount');
-    var selectedBatchInfo = document.getElementById('selectedBatchInfo');
-
-    function escapeHtml(value) {
-        return String(value)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
-
-    function updateSelectedStock() {
-        var key = selectEl ? selectEl.value : '';
-
-        if (!key || !medicineData[key]) {
-            if (selectedStockInfo) {
-                selectedStockInfo.style.display = 'none';
-            }
-
-            if (selectedStockCount) {
-                selectedStockCount.textContent = '0';
-            }
-
-            if (selectedBatchInfo) {
-                selectedBatchInfo.textContent = '';
-            }
-
-            if (qtyEl) {
-                qtyEl.removeAttribute('max');
-            }
-
-            return;
-        }
-
-        var info = medicineData[key];
-        var available = Number(info.available) || 0;
-
-        if (selectedStockInfo) {
-            selectedStockInfo.style.display = 'block';
-        }
-
-        if (selectedStockCount) {
-            selectedStockCount.textContent = available.toLocaleString();
-        }
-
-        if (selectedBatchInfo) {
-            if (info.batch) {
-                selectedBatchInfo.innerHTML =
-                    '&middot; <strong>Batch:</strong> ' +
-                    escapeHtml(info.batch);
-            } else {
-                selectedBatchInfo.textContent = '';
-            }
-        }
-
-        if (qtyEl) {
-            qtyEl.max = available;
-
-            /*
-             * IMPORTANT:
-             * When a medicine is selected, automatically put
-             * the TOTAL CURRENT STOCK into the quantity field.
-             *
-             * Example:
-             * Inventory stock = 250
-             * Select medicine -> Quantity becomes 250
-             */
-            if (available <= 0) {
-                qtyEl.value = 0;
-                qtyEl.disabled = true;
-            } else {
-                qtyEl.value = available;
-                qtyEl.disabled = false;
-            }
-        }
-    }
-
     function resetSelection() {
         if (selectEl.choicesInstance) {
             selectEl.choicesInstance.setChoiceByValue('');
         } else {
             selectEl.value = '';
         }
-
         qtyEl.value = 1;
-        qtyEl.removeAttribute('max');
-        qtyEl.disabled = false;
-
-        if (selectedStockInfo) {
-            selectedStockInfo.style.display = 'none';
-        }
-
-        if (selectedStockCount) {
-            selectedStockCount.textContent = '0';
-        }
-
-        if (selectedBatchInfo) {
-            selectedBatchInfo.textContent = '';
-        }
-    }
-
-    if (selectEl) {
-        selectEl.addEventListener('change', function () {
-            updateSelectedStock();
-        });
     }
 
     function renderList() {
@@ -3818,12 +3634,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
             }
 
             var info = medicineData[key];
-
-            if (info && Number(info.available) <= 0) {
-                alert('This medicine has no available stock.');
-                return;
-            }
-
             var existing = dispenseList.find(function (i) { return i.medicine_key === key; });
             var combinedQty = qty + (existing ? existing.qty_out : 0);
 
