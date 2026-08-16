@@ -412,12 +412,12 @@ body {
     filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .20));
 }
 .btn-purple {
-    background: #7c3aed;
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
     border: none;
     color: #fff;
 }
 .btn-purple:hover {
-    background: #6d28d9;
+    background: linear-gradient(135deg, #7c3aed, #6d28d9);
     color: #fff;
 }
 .form-control:focus {
@@ -1304,6 +1304,24 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 db()->exec("DELETE FROM delivery_logs");
                 $message = "Delivery history cleared successfully.";
+                $messageType = "success";
+            }
+        }
+
+
+        /* ====================================================
+           CLEAR DISPENSING HISTORY — PASSWORD PROTECTED
+        ==================================================== */
+        if ($action === 'clear_dispensing_history') {
+            $clearPassword = $_POST['clear_password'] ?? '';
+            $currentUser = findUserById($_SESSION['user_id'] ?? 0);
+
+            if (!$currentUser || !password_verify($clearPassword, $currentUser['password_hash'])) {
+                $message = "Incorrect password. Dispensing history was not cleared.";
+                $messageType = "danger";
+            } else {
+                db()->exec("DELETE FROM dispense_logs");
+                $message = "Dispensing history cleared successfully.";
                 $messageType = "success";
             }
         }
@@ -2498,17 +2516,35 @@ h4, h5, h6 { color: var(--purple-950); }
 }
 
 .btn-outline-primary { color: var(--purple-600); border-color: var(--purple-400); }
-.btn-outline-primary:hover { background: var(--purple-600); border-color: var(--purple-600); color: #fff; }
+.btn-outline-primary:hover { background: linear-gradient(135deg, var(--purple-500), var(--purple-600)); border-color: var(--purple-600); color: #fff; }
 
-.btn-success { background: var(--success); border-color: var(--success); }
-.btn-success:hover { background: #128a3e; border-color: #128a3e; }
+.btn-success { background: linear-gradient(135deg, #22c55e, var(--success)); border-color: var(--success); color: #fff; box-shadow: 0 3px 8px rgba(22, 163, 74, .22); }
+.btn-success:hover { background: linear-gradient(135deg, var(--success), #128a3e); border-color: #128a3e; color: #fff; }
 
-.btn-danger { background: var(--danger); border-color: var(--danger); }
-.btn-danger:hover { background: #be123c; border-color: #be123c; }
+.btn-danger { background: linear-gradient(135deg, #f43f5e, var(--danger)); border-color: var(--danger); color: #fff; box-shadow: 0 3px 8px rgba(225, 29, 72, .22); }
+.btn-danger:hover { background: linear-gradient(135deg, var(--danger), #be123c); border-color: #be123c; color: #fff; }
 
 .btn-danger:disabled { background: #f3a9b9; border-color: #f3a9b9; opacity: .8; }
 
-.btn-secondary { background: #6b7280; border-color: #6b7280; }
+.btn-warning { background: linear-gradient(135deg, #fbbf24, var(--warning)); border-color: var(--warning); color: #fff; box-shadow: 0 3px 8px rgba(217, 119, 6, .22); }
+.btn-warning:hover { background: linear-gradient(135deg, var(--warning), #b45309); border-color: #b45309; color: #fff; }
+
+.btn-secondary { background: linear-gradient(135deg, #9ca3af, #6b7280); border-color: #6b7280; color: #fff; box-shadow: 0 3px 8px rgba(107, 114, 128, .22); }
+.btn-secondary:hover { background: linear-gradient(135deg, #6b7280, #4b5563); border-color: #4b5563; color: #fff; }
+
+.btn-outline-success { color: var(--success); border-color: var(--success); }
+.btn-outline-success:hover { background: linear-gradient(135deg, #22c55e, var(--success)); border-color: var(--success); color: #fff; }
+
+.btn-outline-danger { color: var(--danger); border-color: var(--danger); }
+.btn-outline-danger:hover { background: linear-gradient(135deg, #f43f5e, var(--danger)); border-color: var(--danger); color: #fff; }
+
+.btn-outline-secondary { color: #6b7280; border-color: #9ca3af; }
+.btn-outline-secondary:hover { background: linear-gradient(135deg, #9ca3af, #6b7280); border-color: #6b7280; color: #fff; }
+
+.btn-light { background: linear-gradient(135deg, #f9fafb, #eef0f4); border-color: #e5e7eb; color: #4b5563; }
+.btn-light:hover { background: linear-gradient(135deg, #eef0f4, #e5e7eb); border-color: #d1d5db; color: #374151; }
+
+.sidebar-logout-btn { font-weight: 600; }
 
 
 /* ============================================================
@@ -2726,8 +2762,8 @@ a:hover { color: var(--purple-700); }
 .btn-enhanced{border-radius:10px!important;font-weight:700!important;padding:9px 15px!important;transition:transform .18s ease,box-shadow .18s ease,filter .18s ease!important}
 .btn-enhanced:hover{transform:translateY(-1px);box-shadow:0 7px 18px rgba(0,0,0,.14);filter:brightness(1.03)}
 .delivery-history-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.theme-toggle-btn{border:1px solid var(--enh-border,#e5e7eb)!important;background:var(--enh-card,#fff)!important;color:var(--enh-purple,#6d28d9)!important;border-radius:10px!important;font-weight:700!important;padding:8px 12px!important;box-shadow:0 2px 7px rgba(0,0,0,.05);margin:8px 12px}
-.theme-toggle-btn:hover{box-shadow:0 6px 16px rgba(0,0,0,.10)}
+.theme-toggle-btn{border:1px solid var(--purple-600,#6d28d9)!important;background:linear-gradient(135deg,var(--purple-500,#7c3aed),var(--purple-600,#6d28d9))!important;color:#fff!important;border-radius:10px!important;font-weight:700!important;padding:8px 12px!important;box-shadow:0 3px 8px rgba(109,40,217,.22);margin:0}
+.theme-toggle-btn:hover{background:linear-gradient(135deg,var(--purple-600,#6d28d9),var(--purple-700,#5b21b6))!important;box-shadow:0 6px 16px rgba(0,0,0,.18)}
 .enhanced-modal{border:0!important;border-radius:18px!important;overflow:hidden;background:var(--enh-card,#fff);color:var(--enh-text,#241b35);box-shadow:0 24px 70px rgba(0,0,0,.25)}
 .enhanced-modal .modal-header{border-bottom:1px solid var(--enh-border,#e5e7eb);padding:18px 20px}
 .enhanced-modal .modal-footer{border-top:1px solid var(--enh-border,#e5e7eb)}
@@ -2738,7 +2774,7 @@ a:hover { color: var(--purple-700); }
 .password-toggle-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:transparent;padding:8px;color:#7b728a;cursor:pointer}
 :root[data-theme="dark"]{--enh-bg:#100b1b;--enh-card:#1b1428;--enh-border:#382b49;--enh-text:#f3eff9;--enh-muted:#b7adc8;--enh-purple:#c4a8ff}
 :root[data-theme="dark"] body{background:var(--enh-bg)!important;color:var(--enh-text)!important}
-:root[data-theme="dark"] .top-navbar,:root[data-theme="dark"] .card-custom,:root[data-theme="dark"] .enhanced-modal,:root[data-theme="dark"] .theme-toggle-btn{background:var(--enh-card)!important;color:var(--enh-text)!important;border-color:var(--enh-border)!important}
+:root[data-theme="dark"] .top-navbar,:root[data-theme="dark"] .card-custom,:root[data-theme="dark"] .enhanced-modal{background:var(--enh-card)!important;color:var(--enh-text)!important;border-color:var(--enh-border)!important}
 :root[data-theme="dark"] .table{--bs-table-bg:var(--enh-card);--bs-table-color:var(--enh-text);--bs-table-border-color:var(--enh-border)}
 :root[data-theme="dark"] .form-control,:root[data-theme="dark"] .form-select{background:#241b34!important;color:#f5f1fb!important;border-color:#443653!important}
 :root[data-theme="dark"] .form-control::placeholder{color:#9f93b0!important}
@@ -2828,6 +2864,9 @@ a:hover { color: var(--purple-700); }
     <i class="fa-solid fa-file-excel text-success me-1"></i>
     Excel reports automatically updated
     <div class="mt-1">Data as of <?php echo date('M j, Y g:i A'); ?></div>
+    <a href="?logout=1" class="btn btn-outline-secondary btn-sm w-100 mt-3 sidebar-logout-btn">
+        <i class="fa-solid fa-right-from-bracket me-1"></i>Logout
+    </a>
 </div>
 
 </div>
@@ -2845,10 +2884,6 @@ a:hover { color: var(--purple-700); }
 =========================================================== -->
 
 <div class="top-navbar px-4 py-3 d-flex justify-content-between align-items-center">
-<button type="button" class="btn theme-toggle-btn" data-theme-toggle>
-<i class="fa-solid fa-moon"></i><span class="theme-label">Dark Mode</span>
-</button>
-
 
 <div class="d-flex align-items-center">
 <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">
@@ -2867,17 +2902,9 @@ a:hover { color: var(--purple-700); }
 <?php echo h(currentUsername()); ?>
 </button>
 
-<a href="?export=inventory" class="btn btn-success btn-sm me-2">
-<i class="fa-solid fa-file-excel me-1"></i>Inventory Excel
-</a>
-
-<a href="?export=dispensing&month=<?php echo date('m'); ?>&year=<?php echo date('Y'); ?>" class="btn btn-danger btn-sm me-2">
-<i class="fa-solid fa-file-excel me-1"></i>Dispensing Excel
-</a>
-
-<a href="?logout=1" class="btn btn-outline-secondary btn-sm">
-<i class="fa-solid fa-right-from-bracket me-1"></i>Logout
-</a>
+<button type="button" class="btn theme-toggle-btn" data-theme-toggle>
+<i class="fa-solid fa-moon"></i><span class="theme-label">Dark Mode</span>
+</button>
 
 </div>
 
@@ -3614,7 +3641,12 @@ No medicines added yet. Select a medicine above and click "Add to List".
 <!-- DISPENSING HISTORY -->
 
 <div class="card-custom p-4">
-<h5 class="mb-3">Dispensing History</h5>
+<div class="d-flex justify-content-between align-items-center mb-3">
+<h5 class="mb-0">Dispensing History</h5>
+<button type="button" class="btn btn-danger btn-sm btn-enhanced" id="clearDispenseHistoryBtn">
+<i class="fa-solid fa-trash-can me-1"></i>Clear History
+</button>
+</div>
 
 <div class="table-responsive">
 <table class="table table-bordered table-custom">
@@ -4397,6 +4429,48 @@ document.addEventListener('DOMContentLoaded', function () {
   </div>
 </div>
 
+<!-- PASSWORD-PROTECTED CLEAR DISPENSING HISTORY -->
+<div class="modal fade" id="clearDispenseHistoryModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content enhanced-modal">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title"><i class="fa-solid fa-shield-halved me-2"></i>Clear Dispensing History</h5>
+          <small class="text-muted">Password confirmation required</small>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="clearDispenseHistoryForm">
+        <input type="hidden" name="action" value="clear_dispensing_history">
+        <div class="modal-body">
+          <div class="security-warning">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <div>
+              <strong>This action cannot be undone.</strong>
+              <div>All dispensing history records will be permanently deleted.</div>
+            </div>
+          </div>
+          <label class="form-label fw-semibold mt-3">Your Password</label>
+          <div class="password-toggle-wrap">
+            <input type="password" name="clear_password" id="clearDispenseHistoryPassword"
+                   class="form-control" required autocomplete="current-password"
+                   placeholder="Enter your account password">
+            <button type="button" class="password-toggle-btn" id="toggleClearDispenseHistoryPassword">
+              <i class="fa-solid fa-eye"></i>
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light btn-enhanced" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger btn-enhanced">
+            <i class="fa-solid fa-trash-can me-1"></i>Clear All History
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const root = document.documentElement;
@@ -4440,6 +4514,31 @@ document.addEventListener('DOMContentLoaded', function () {
             const show = password.type === 'password';
             password.type = show ? 'text' : 'password';
             toggle.innerHTML = show
+                ? '<i class="fa-solid fa-eye-slash"></i>'
+                : '<i class="fa-solid fa-eye"></i>';
+        });
+    }
+
+    const clearDispenseBtn = document.getElementById('clearDispenseHistoryBtn');
+    const dispenseModalEl = document.getElementById('clearDispenseHistoryModal');
+    const dispensePassword = document.getElementById('clearDispenseHistoryPassword');
+    const dispenseToggle = document.getElementById('toggleClearDispenseHistoryPassword');
+
+    if (clearDispenseBtn && dispenseModalEl && window.bootstrap) {
+        clearDispenseBtn.addEventListener('click', function () {
+            if (dispensePassword) {
+                dispensePassword.value = '';
+                dispensePassword.type = 'password';
+            }
+            bootstrap.Modal.getOrCreateInstance(dispenseModalEl).show();
+        });
+    }
+
+    if (dispenseToggle && dispensePassword) {
+        dispenseToggle.addEventListener('click', function () {
+            const show = dispensePassword.type === 'password';
+            dispensePassword.type = show ? 'text' : 'password';
+            dispenseToggle.innerHTML = show
                 ? '<i class="fa-solid fa-eye-slash"></i>'
                 : '<i class="fa-solid fa-eye"></i>';
         });
