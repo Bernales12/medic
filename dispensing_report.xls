@@ -11,7 +11,7 @@
     <body>
 
     <h2>Medicine Dispensing / Stock-Out Report</h2>
-    <p>Generated: 15 Aug 2026 22:03:46</p>
+    <p>Generated: 16 Aug 2026 01:44:43</p>
 
     <table>
     <tr><th>Date</th><th>Medicine</th><th>Batch Number</th><th>Quantity Dispensed</th><th>Recipient</th></tr><tr><td>15 Aug 2026</td><td>Cetirizine 10 mg Tablet</td><td>BCH-2026-03X</td><td>1</td><td>hani</td></tr><tr><td>15 Aug 2026</td><td>Cetirizine 10 mg Tablet</td><td>BCH-2026-03X</td><td>1</td><td>hani</td></tr><tr><td>20 May 2026</td><td>Paracetamol 500 mg Tablet</td><td>BCH-2026-01A</td><td>10</td><td>John Doe</td></tr></table></body></html>
