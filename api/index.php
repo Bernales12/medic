@@ -433,6 +433,34 @@ body {
 @media (max-width: 480px) {
     .login-card { padding: 1.75rem 1.5rem; border-radius: .75rem; }
 }
+<style>
+/* 10-row preview + search controls */
+.list-search-wrap {
+    display: flex;
+    gap: .75rem;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+.list-search-wrap .list-search-input {
+    flex: 1 1 280px;
+    min-width: 220px;
+}
+.list-see-more {
+    white-space: nowrap;
+}
+.list-see-more.d-none {
+    display: none !important;
+}
+.table-list-row.is-hidden-by-limit {
+    display: none;
+}
+.table-list-empty {
+    display: none;
+}
+.table-list-empty.show {
+    display: table-row;
+}
 </style>
 </head>
 <body>
@@ -2714,7 +2742,7 @@ a:hover { color: var(--purple-700); }
 <div>
 
 <div class="sidebar-logo hospital-brand">
-<img src="pharmacy.png" alt="Bangsamoro Regional Hospital and Medical Center Pharmacy Department " class="hospital-logo">
+<img src="https://github.com/Bernales12/medic/blob/main/api/pharmacy.png?raw=true" alt="Bangsamoro Regional Hospital and Medical Center Pharmacy Department " class="hospital-logo">
     <div class="hospital-brand-text">
         <strong>PHARMACY</strong>
         <small>INVENTORY CONTROL</small>
@@ -3236,12 +3264,20 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 
 <div class="card-custom p-4">
 <div class="card-title-row">
-<h5>Complete Medicine List</h5>
+<div>
+<h5 class="mb-1">Complete Medicine List</h5>
+<small class="text-muted">Showing 10 medicines at a time.</small>
+</div>
 <span class="badge bg-primary"><?php echo $totalProducts; ?> items</span>
 </div>
 
+<div class="list-search-wrap">
+<input type="search" class="form-control list-search-input" data-list-search="completeMedicineList" placeholder="Search medicine, SKU, batch, category..." autocomplete="off">
+<button type="button" class="btn btn-outline-primary list-see-more" data-list-more="completeMedicineList">See More</button>
+</div>
+
 <div class="table-responsive">
-<table class="table table-bordered table-custom">
+<table id="completeMedicineList" class="table table-bordered table-custom" data-list-limit="10">
 <thead>
 <tr>
 <th>Medicine</th><th>Strength</th><th>Form</th><th>Category</th><th>Batch</th>
@@ -3273,7 +3309,7 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 }
 ?>
 
-<tr class="<?php echo $rowClass; ?>">
+<tr class="table-list-row <?php echo $rowClass; ?>">
 <td class="fw-bold"><?php echo h(medicineFullName($med)); ?><br><small class="text-muted">SKU: <?php echo h($med['sku'] ?? ''); ?></small></td>
 <td><?php echo h($med['strength'] ?? ''); ?> <?php echo h($med['unit'] ?? ''); ?></td>
 <td><?php echo h($med['dosage_form'] ?? ''); ?></td>
@@ -3294,6 +3330,7 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 </tr>
 
 <?php endforeach; ?>
+<tr class="table-list-empty"><td colspan="10" class="text-center text-muted py-3">No matching medicines found.</td></tr>
 
 </tbody>
 </table>
@@ -3428,7 +3465,37 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 </div></form>
 </div>
 
-<div class="card-custom p-4 mb-4"><div class="card-title-row"><div><h5>Inventory Products</h5><small class="text-muted">Edit inventory directly from the Delivery Stock module.</small></div></div><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Current Stock</th><th>Action</th></tr></thead><tbody><?php foreach ($medicineInventory as $key => $med): ?><tr><td class="fw-bold"><?php echo h(medicineFullName($med)); ?></td><td><?php echo h($med['batch_number'] ?? ''); ?></td><td><?php echo h($med['expiration_date'] ?? ''); ?></td><td class="fw-bold"><?php echo intval($med['quantity'] ?? 0); ?></td><td><button type="button" class="btn btn-sm btn-primary delivery-edit-btn" data-bs-toggle="modal" data-bs-target="#editModal<?php echo h($key); ?>" data-return-tab="delivery"><i class="fa-solid fa-pen me-1"></i>Edit Inventory</button></td></tr><?php endforeach; ?></tbody></table></div></div>
+<div class="card-custom p-4 mb-4">
+<div class="card-title-row">
+<div>
+<h5>Inventory Products</h5>
+<small class="text-muted">Edit inventory directly from the Delivery Stock module. Showing 10 products at a time.</small>
+</div>
+</div>
+
+<div class="list-search-wrap">
+<input type="search" class="form-control list-search-input" data-list-search="deliveryInventoryList" placeholder="Search medicine, batch, expiration..." autocomplete="off">
+<button type="button" class="btn btn-outline-primary list-see-more" data-list-more="deliveryInventoryList">See More</button>
+</div>
+
+<div class="table-responsive">
+<table id="deliveryInventoryList" class="table table-bordered table-custom" data-list-limit="10">
+<thead><tr><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Current Stock</th><th>Action</th></tr></thead>
+<tbody>
+<?php foreach ($medicineInventory as $key => $med): ?>
+<tr class="table-list-row">
+<td class="fw-bold"><?php echo h(medicineFullName($med)); ?></td>
+<td><?php echo h($med['batch_number'] ?? ''); ?></td>
+<td><?php echo h($med['expiration_date'] ?? ''); ?></td>
+<td class="fw-bold"><?php echo intval($med['quantity'] ?? 0); ?></td>
+<td><button type="button" class="btn btn-sm btn-primary delivery-edit-btn" data-bs-toggle="modal" data-bs-target="#editModal<?php echo h($key); ?>" data-return-tab="delivery"><i class="fa-solid fa-pen me-1"></i>Edit Inventory</button></td>
+</tr>
+<?php endforeach; ?>
+<tr class="table-list-empty"><td colspan="5" class="text-center text-muted py-3">No matching inventory products found.</td></tr>
+</tbody>
+</table>
+</div>
+</div>
 
 <div class="card-custom p-4 mb-4"><div class="card-title-row"><div><h5><i class="fa-solid fa-calendar-day text-success me-2"></i>Today's Delivery Report</h5><small class="text-muted"><?php echo date('F j, Y'); ?></small></div><span class="badge bg-success"><?php echo number_format($todayDeliveryTotal); ?> units delivered</span></div><?php if (empty($todayDeliveryByMedicine)): ?><div class="text-muted text-center py-4">No deliveries recorded today.</div><?php else: ?><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Quantity Delivered Today</th></tr></thead><tbody><?php foreach ($todayDeliveryByMedicine as $name => $qty): ?><tr><td class="fw-bold"><?php echo h($name); ?></td><td class="text-success fw-bold">+<?php echo number_format($qty); ?> units</td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?></div>
 
@@ -3441,7 +3508,42 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 <div class="col-md-3 d-flex align-items-end"><a class="btn btn-outline-success w-100" href="?export=delivery&month=<?php echo $selectedDeliveryMonth; ?>&year=<?php echo $selectedDeliveryYear; ?>"><i class="fa-solid fa-file-excel me-1"></i>Export Selected Month</a></div>
 </form>
 <div class="alert alert-success"><strong><?php echo date('F Y', strtotime("$selectedDeliveryYear-$selectedDeliveryMonth-01")); ?></strong> &mdash; Total delivered: <strong><?php echo number_format($monthlyDeliveryTotal); ?> units</strong></div>
-<div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Quantity Delivered</th><th>Current Stock</th><th>Action</th></tr></thead><tbody><?php $hasDeliveryHistory=false; foreach ($deliveryLogs as $delivery): $ts=!empty($delivery['date_iso'])?strtotime($delivery['date_iso']):false; if($ts===false || intval(date('m',$ts))!==$selectedDeliveryMonth || intval(date('Y',$ts))!==$selectedDeliveryYear) continue; $hasDeliveryHistory=true; $deliveryMedicine = !empty($delivery['medicine_sku']) ? fetchMedicine($delivery['medicine_sku']) : null; ?><tr><td><?php echo h($delivery['date']); ?></td><td class="fw-bold"><?php echo h(medicineFullName($delivery)); ?></td><td><?php echo h($delivery['batch_number']); ?></td><td><?php echo h($delivery['expiration_date']); ?></td><td class="text-success fw-bold">+<?php echo intval($delivery['quantity_delivered']); ?></td><td class="fw-bold"><?php echo $deliveryMedicine ? intval($deliveryMedicine['quantity']) : '—'; ?></td><td><?php if ($deliveryMedicine): ?><button type="button" class="btn btn-sm btn-primary delivery-edit-btn" data-bs-toggle="modal" data-bs-target="#editModal<?php echo h($deliveryMedicine['sku']); ?>" data-return-tab="delivery"><i class="fa-solid fa-pen me-1"></i>Edit</button><?php else: ?><span class="text-muted">Unavailable</span><?php endif; ?></td></tr><?php endforeach; if(!$hasDeliveryHistory): ?><tr><td colspan="7" class="text-center text-muted">No delivery transactions for this month.</td></tr><?php endif; ?></tbody></table></div></div>
+
+<div class="list-search-wrap">
+<input type="search" class="form-control list-search-input" data-list-search="deliveryHistoryList" placeholder="Search delivery date, medicine, batch..." autocomplete="off">
+<button type="button" class="btn btn-outline-success list-see-more" data-list-more="deliveryHistoryList">See More</button>
+</div>
+
+<div class="table-responsive">
+<table id="deliveryHistoryList" class="table table-bordered table-custom" data-list-limit="10">
+<thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Quantity Delivered</th><th>Current Stock</th><th>Action</th></tr></thead>
+<tbody>
+<?php
+$hasDeliveryHistory=false;
+foreach ($deliveryLogs as $delivery):
+    $ts=!empty($delivery['date_iso'])?strtotime($delivery['date_iso']):false;
+    if($ts===false || intval(date('m',$ts))!==$selectedDeliveryMonth || intval(date('Y',$ts))!==$selectedDeliveryYear) continue;
+    $hasDeliveryHistory=true;
+    $deliveryMedicine = !empty($delivery['medicine_sku']) ? fetchMedicine($delivery['medicine_sku']) : null;
+?>
+<tr class="table-list-row">
+<td><?php echo h($delivery['date']); ?></td>
+<td class="fw-bold"><?php echo h(medicineFullName($delivery)); ?></td>
+<td><?php echo h($delivery['batch_number']); ?></td>
+<td><?php echo h($delivery['expiration_date']); ?></td>
+<td class="text-success fw-bold">+<?php echo intval($delivery['quantity_delivered']); ?></td>
+<td class="fw-bold"><?php echo $deliveryMedicine ? intval($deliveryMedicine['quantity']) : '—'; ?></td>
+<td><?php if ($deliveryMedicine): ?><button type="button" class="btn btn-sm btn-primary delivery-edit-btn" data-bs-toggle="modal" data-bs-target="#editModal<?php echo h($deliveryMedicine['sku']); ?>" data-return-tab="delivery"><i class="fa-solid fa-pen me-1"></i>Edit</button><?php else: ?><span class="text-muted">Unavailable</span><?php endif; ?></td>
+</tr>
+<?php endforeach; ?>
+<?php if(!$hasDeliveryHistory): ?>
+<tr><td colspan="7" class="text-center text-muted">No delivery transactions for this month.</td></tr>
+<?php endif; ?>
+<tr class="table-list-empty"><td colspan="7" class="text-center text-muted py-3">No matching delivery records found.</td></tr>
+</tbody>
+</table>
+</div>
+</div>
 
 </div>
 
@@ -3864,6 +3966,85 @@ No medicines added yet. Select a medicine above and click "Add to List".
 <!-- ==========================================================
      BOOTSTRAP JAVASCRIPT
 =========================================================== -->
+
+
+<script>
+/* ==========================================================
+   TABLE PREVIEW: 10 ROWS + SEARCH + SEE MORE
+   Applies to Complete Medicine List, Delivery Stock Inventory
+   Products, and Delivery History.
+========================================================== */
+(function () {
+    var DEFAULT_LIMIT = 10;
+
+    function initList(table) {
+        if (!table) return;
+
+        var limit = parseInt(table.getAttribute('data-list-limit') || DEFAULT_LIMIT, 10);
+        var rows = Array.prototype.slice.call(table.querySelectorAll('tbody tr.table-list-row'));
+        var emptyRow = table.querySelector('tbody tr.table-list-empty');
+        var searchInput = document.querySelector('[data-list-search="' + table.id + '"]');
+        var moreButton = document.querySelector('[data-list-more="' + table.id + '"]');
+        var expanded = false;
+
+        function apply() {
+            var query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+            var visibleMatches = [];
+
+            rows.forEach(function (row) {
+                var matches = !query || row.textContent.toLowerCase().indexOf(query) !== -1;
+                row.classList.remove('is-hidden-by-limit');
+
+                if (matches) {
+                    visibleMatches.push(row);
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            visibleMatches.forEach(function (row, index) {
+                row.style.display = '';
+                if (!expanded && index >= limit) {
+                    row.classList.add('is-hidden-by-limit');
+                }
+            });
+
+            if (emptyRow) {
+                emptyRow.classList.toggle('show', visibleMatches.length === 0);
+            }
+
+            if (moreButton) {
+                var hasMore = visibleMatches.length > limit;
+                moreButton.classList.toggle('d-none', !hasMore);
+                moreButton.textContent = expanded ? 'Show Less' : 'See More';
+            }
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', function () {
+                // Search results should show all matching records, not only the first 10.
+                expanded = true;
+                apply();
+            });
+        }
+
+        if (moreButton) {
+            moreButton.addEventListener('click', function () {
+                expanded = !expanded;
+                apply();
+            });
+        }
+
+        apply();
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        ['completeMedicineList', 'deliveryInventoryList', 'deliveryHistoryList'].forEach(function (id) {
+            initList(document.getElementById(id));
+        });
+    });
+})();
+</script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
