@@ -2072,6 +2072,7 @@ h4, h5, h6 { color: var(--purple-950); }
 .alert { border-radius: 12px; }
 .alert-danger { color: #881337; background: #fff1f2; border-color: #fecdd3; }
 .alert-success { color: #166534; background: #f0fdf4; border-color: #bbf7d0; }
+.alert-primary { color: #4c1d95; background: var(--purple-100); border-color: var(--purple-200); }
 
 
 /* ============================================================
@@ -2959,6 +2960,15 @@ $expired = $exp !== false && $exp <= $todayTimestamp;
 </option>
 <?php endforeach; ?>
 </select>
+
+<div id="selectedStockInfo" class="mt-2" style="display:none;">
+    <div class="alert alert-primary py-2 px-3 mb-0">
+        <i class="fa-solid fa-boxes-stacked me-2"></i>
+        <strong>Available Stock:</strong>
+        <span id="selectedStockCount">0</span> units
+        <span id="selectedBatchInfo" class="ms-2"></span>
+    </div>
+</div>
 </div>
 
 <div class="col-md-2">
@@ -3380,13 +3390,103 @@ No medicines added yet. Select a medicine above and click "Add to List".
     var confirmBtn = document.getElementById('confirmDispenseBtn');
     var dispenseForm = document.getElementById('dispenseForm');
 
+    var selectedStockInfo = document.getElementById('selectedStockInfo');
+    var selectedStockCount = document.getElementById('selectedStockCount');
+    var selectedBatchInfo = document.getElementById('selectedBatchInfo');
+
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function updateSelectedStock() {
+        var key = selectEl ? selectEl.value : '';
+
+        if (!key || !medicineData[key]) {
+            if (selectedStockInfo) {
+                selectedStockInfo.style.display = 'none';
+            }
+
+            if (selectedStockCount) {
+                selectedStockCount.textContent = '0';
+            }
+
+            if (selectedBatchInfo) {
+                selectedBatchInfo.textContent = '';
+            }
+
+            if (qtyEl) {
+                qtyEl.removeAttribute('max');
+            }
+
+            return;
+        }
+
+        var info = medicineData[key];
+        var available = Number(info.available) || 0;
+
+        if (selectedStockInfo) {
+            selectedStockInfo.style.display = 'block';
+        }
+
+        if (selectedStockCount) {
+            selectedStockCount.textContent = available.toLocaleString();
+        }
+
+        if (selectedBatchInfo) {
+            if (info.batch) {
+                selectedBatchInfo.innerHTML =
+                    '&middot; <strong>Batch:</strong> ' +
+                    escapeHtml(info.batch);
+            } else {
+                selectedBatchInfo.textContent = '';
+            }
+        }
+
+        if (qtyEl) {
+            qtyEl.max = available;
+
+            var currentQty = parseInt(qtyEl.value, 10) || 1;
+
+            if (available <= 0) {
+                qtyEl.value = 0;
+            } else if (currentQty > available) {
+                qtyEl.value = available;
+            }
+        }
+    }
+
     function resetSelection() {
         if (selectEl.choicesInstance) {
             selectEl.choicesInstance.setChoiceByValue('');
         } else {
             selectEl.value = '';
         }
+
         qtyEl.value = 1;
+        qtyEl.removeAttribute('max');
+
+        if (selectedStockInfo) {
+            selectedStockInfo.style.display = 'none';
+        }
+
+        if (selectedStockCount) {
+            selectedStockCount.textContent = '0';
+        }
+
+        if (selectedBatchInfo) {
+            selectedBatchInfo.textContent = '';
+        }
+    }
+
+    if (selectEl) {
+        selectEl.addEventListener('change', function () {
+            updateSelectedStock();
+        });
     }
 
     function renderList() {
@@ -3457,6 +3557,12 @@ No medicines added yet. Select a medicine above and click "Add to List".
             }
 
             var info = medicineData[key];
+
+            if (info && Number(info.available) <= 0) {
+                alert('This medicine has no available stock.');
+                return;
+            }
+
             var existing = dispenseList.find(function (i) { return i.medicine_key === key; });
             var combinedQty = qty + (existing ? existing.qty_out : 0);
 
