@@ -377,13 +377,17 @@ body {
     font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
     background: linear-gradient(160deg, #2a1a4a 0%, #4c1d95 55%, #7c3aed 100%);
     min-height: 100vh;
+    min-height: 100dvh;
+    width: 100%;
+    overflow-x: hidden;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 16px;
 }
 .login-card {
-    width: 100%;
+    width: min(100%, 400px);
     max-width: 400px;
     background: #ffffff;
     border-radius: 1rem;
@@ -432,14 +436,6 @@ body {
 </style>
 </head>
 <body>
-<div id="appLoadingOverlay" aria-hidden="true">
-<div class="app-loading-card">
-<div class="app-loading-spinner"></div>
-<div class="app-loading-title">Saving...</div>
-<div class="app-loading-text" id="appLoadingText">Please wait while your changes are being saved.</div>
-</div></div>
-
-
 <div class="login-card">
 <div class="login-icon"><i class="fa-solid fa-pills"></i></div>
 <h4 class="text-center fw-bold mb-1">Pharmacy Inventory</h4>
@@ -750,6 +746,34 @@ function insertDeliveryLog($dateIso, $medicine, $quantity)
         $dateIso, $medicine['sku'], $medicine['inventory_name'], $medicine['strength'],
         $medicine['unit'], $medicine['dosage_form'], $medicine['generic_name'], $medicine['category'],
         $medicine['batch_number'], $medicine['expiration_date'] ?: null, $quantity
+    ]);
+}
+
+function syncDeliveryLogsForMedicine($sku, $medicine)
+{
+    // Keep delivery history display synchronized with the inventory row after an edit.
+    $stmt = db()->prepare("
+        UPDATE delivery_logs SET
+            inventory_name = ?,
+            strength = ?,
+            unit = ?,
+            dosage_form = ?,
+            generic_name = ?,
+            category = ?,
+            batch_number = ?,
+            expiration_date = ?
+        WHERE medicine_sku = ?
+    ");
+    $stmt->execute([
+        $medicine['inventory_name'],
+        $medicine['strength'],
+        $medicine['unit'],
+        $medicine['dosage_form'],
+        $medicine['generic_name'],
+        $medicine['category'],
+        $medicine['batch_number'],
+        $medicine['expiration_date'] ?: null,
+        $sku
     ]);
 }
 
@@ -1303,7 +1327,7 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($existing) {
 
-                updateMedicine($key, [
+                $updatedMedicine = [
                     'inventory_name' => trim($_POST['inventory_name'] ?? ''),
                     'strength' => trim($_POST['strength'] ?? ''),
                     'unit' => trim($_POST['unit'] ?? ''),
@@ -1314,7 +1338,13 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     'expiration_date' => $_POST['expiration_date'] ?? '',
                     'category' => trim($_POST['category'] ?? ''),
                     'low_stock_threshold' => max(1, intval($_POST['low_stock_threshold'] ?? $DEFAULT_LOW_STOCK))
-                ]);
+                ];
+
+                updateMedicine($key, $updatedMedicine);
+                $updatedRow = fetchMedicine($key);
+                if ($updatedRow) {
+                    syncDeliveryLogsForMedicine($key, $updatedRow);
+                }
 
                 $message = "Medicine information successfully updated.";
                 $messageType = "success";
@@ -2064,12 +2094,54 @@ body {
 }
 
 
-.sidebar-logo {
+/* Hospital logo branding above the module navigator */
+.sidebar-logo.hospital-brand {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 12px;
-    padding: 6px 8px 22px 8px;
+    justify-content: center;
+    gap: 8px;
+    padding: 4px 4px 18px 4px;
+    text-align: center;
 }
+
+.hospital-logo {
+    width: 112px;
+    height: 112px;
+    object-fit: contain;
+    display: block;
+    border-radius: 50%;
+    filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .28));
+}
+
+.hospital-brand-text {
+    line-height: 1.15;
+}
+
+.hospital-brand-text strong {
+    display: block;
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 14px;
+    letter-spacing: .6px;
+}
+
+.hospital-brand-text small {
+    display: block;
+    margin-top: 3px;
+    color: var(--purple-300);
+    font-size: 9.5px;
+    letter-spacing: .5px;
+}
+
+/* Keep the branding compact on smaller screens */
+@media (max-width: 767.98px) {
+    .hospital-logo {
+        width: 88px;
+        height: 88px;
+    }
+}
+
 
 
 .sidebar-logo .logo-icon {
@@ -2641,9 +2713,9 @@ a:hover { color: var(--purple-700); }
 
 <div>
 
-<div class="sidebar-logo">
-    <div class="logo-icon"><i class="fa-solid fa-pills"></i></div>
-    <div class="logo-text">
+<div class="sidebar-logo hospital-brand">
+<img src="pharmacy.png" alt="Bangsamoro Regional Hospital and Medical Center Pharmacy Department " class="hospital-logo">
+    <div class="hospital-brand-text">
         <strong>PHARMACY</strong>
         <small>INVENTORY CONTROL</small>
     </div>
@@ -3360,7 +3432,16 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 
 <div class="card-custom p-4 mb-4"><div class="card-title-row"><div><h5><i class="fa-solid fa-calendar-day text-success me-2"></i>Today's Delivery Report</h5><small class="text-muted"><?php echo date('F j, Y'); ?></small></div><span class="badge bg-success"><?php echo number_format($todayDeliveryTotal); ?> units delivered</span></div><?php if (empty($todayDeliveryByMedicine)): ?><div class="text-muted text-center py-4">No deliveries recorded today.</div><?php else: ?><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Quantity Delivered Today</th></tr></thead><tbody><?php foreach ($todayDeliveryByMedicine as $name => $qty): ?><tr><td class="fw-bold"><?php echo h($name); ?></td><td class="text-success fw-bold">+<?php echo number_format($qty); ?> units</td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?></div>
 
-<div class="card-custom p-4"><h5 class="mb-3">Delivery History</h5><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Quantity Delivered</th></tr></thead><tbody><?php if (empty($deliveryLogs)): ?><tr><td colspan="5" class="text-center text-muted">No delivery records yet.</td></tr><?php else: foreach ($deliveryLogs as $delivery): ?><tr><td><?php echo h($delivery['date']); ?></td><td class="fw-bold"><?php echo h(medicineFullName($delivery)); ?></td><td><?php echo h($delivery['batch_number']); ?></td><td><?php echo h($delivery['expiration_date']); ?></td><td class="text-success fw-bold">+<?php echo intval($delivery['quantity_delivered']); ?></td></tr><?php endforeach; endif; ?></tbody></table></div></div>
+<div class="card-custom p-4">
+<div class="card-title-row"><div><h5 class="mb-1">Delivery History</h5><small class="text-muted">View delivery records by selected month and year.</small></div><span class="badge bg-success"><?php echo date('F Y', strtotime("$selectedDeliveryYear-$selectedDeliveryMonth-01")); ?></span></div>
+<form method="GET" class="row g-2 mb-4">
+<div class="col-md-3"><label class="form-label">Month</label><select name="delivery_month" class="form-select"><?php for ($m = 1; $m <= 12; $m++): ?><option value="<?php echo $m; ?>" <?php echo $m == $selectedDeliveryMonth ? 'selected' : ''; ?>><?php echo date('F', mktime(0,0,0,$m,1)); ?></option><?php endfor; ?></select></div>
+<div class="col-md-2"><label class="form-label">Year</label><select name="delivery_year" class="form-select"><?php for ($y = date('Y') - 3; $y <= date('Y') + 1; $y++): ?><option value="<?php echo $y; ?>" <?php echo $y == $selectedDeliveryYear ? 'selected' : ''; ?>><?php echo $y; ?></option><?php endfor; ?></select></div>
+<div class="col-md-3 d-flex align-items-end"><button class="btn btn-success"><i class="fa-solid fa-filter me-1"></i>Show Delivery History</button></div>
+<div class="col-md-3 d-flex align-items-end"><a class="btn btn-outline-success w-100" href="?export=delivery&month=<?php echo $selectedDeliveryMonth; ?>&year=<?php echo $selectedDeliveryYear; ?>"><i class="fa-solid fa-file-excel me-1"></i>Export Selected Month</a></div>
+</form>
+<div class="alert alert-success"><strong><?php echo date('F Y', strtotime("$selectedDeliveryYear-$selectedDeliveryMonth-01")); ?></strong> &mdash; Total delivered: <strong><?php echo number_format($monthlyDeliveryTotal); ?> units</strong></div>
+<div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Quantity Delivered</th><th>Current Stock</th><th>Action</th></tr></thead><tbody><?php $hasDeliveryHistory=false; foreach ($deliveryLogs as $delivery): $ts=!empty($delivery['date_iso'])?strtotime($delivery['date_iso']):false; if($ts===false || intval(date('m',$ts))!==$selectedDeliveryMonth || intval(date('Y',$ts))!==$selectedDeliveryYear) continue; $hasDeliveryHistory=true; $deliveryMedicine = !empty($delivery['medicine_sku']) ? fetchMedicine($delivery['medicine_sku']) : null; ?><tr><td><?php echo h($delivery['date']); ?></td><td class="fw-bold"><?php echo h(medicineFullName($delivery)); ?></td><td><?php echo h($delivery['batch_number']); ?></td><td><?php echo h($delivery['expiration_date']); ?></td><td class="text-success fw-bold">+<?php echo intval($delivery['quantity_delivered']); ?></td><td class="fw-bold"><?php echo $deliveryMedicine ? intval($deliveryMedicine['quantity']) : '—'; ?></td><td><?php if ($deliveryMedicine): ?><button type="button" class="btn btn-sm btn-primary delivery-edit-btn" data-bs-toggle="modal" data-bs-target="#editModal<?php echo h($deliveryMedicine['sku']); ?>" data-return-tab="delivery"><i class="fa-solid fa-pen me-1"></i>Edit</button><?php else: ?><span class="text-muted">Unavailable</span><?php endif; ?></td></tr><?php endforeach; if(!$hasDeliveryHistory): ?><tr><td colspan="7" class="text-center text-muted">No delivery transactions for this month.</td></tr><?php endif; ?></tbody></table></div></div>
 
 </div>
 
@@ -3737,10 +3818,16 @@ No medicines added yet. Select a medicine above and click "Add to List".
 
     document.querySelectorAll('.delivery-edit-btn').forEach(function(button){
         button.addEventListener('click',function(){
-            var modal=document.querySelector(button.getAttribute('data-bs-target'));
+            var target=button.getAttribute('data-bs-target');
+            var modal=document.querySelector(target);
             if(!modal)return;
             var input=modal.querySelector('.edit-return-tab');
             if(input)input.value=button.getAttribute('data-return-tab')||'products';
+
+            // Bootstrap modals render most reliably when attached directly to <body>.
+            if(modal.parentElement !== document.body){
+                document.body.appendChild(modal);
+            }
         });
     });
 
