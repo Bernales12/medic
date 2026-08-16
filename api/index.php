@@ -395,16 +395,21 @@ body {
     box-shadow: 0 20px 50px rgba(0,0,0,.25);
 }
 .login-icon {
-    width: 60px;
-    height: 60px;
-    border-radius: 1rem;
-    background: linear-gradient(135deg, #7c3aed, #a78bfa);
+    width: 112px;
+    height: 112px;
+    margin: 0 auto 1rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
-    font-size: 26px;
-    margin: 0 auto 1rem;
+}
+
+.login-logo {
+    width: 112px;
+    height: 112px;
+    object-fit: contain;
+    display: block;
+    border-radius: 50%;
+    filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .20));
 }
 .btn-purple {
     background: #7c3aed;
@@ -432,12 +437,16 @@ body {
 }
 @media (max-width: 480px) {
     .login-card { padding: 1.75rem 1.5rem; border-radius: .75rem; }
+    .login-icon, .login-logo {
+        width: 88px;
+        height: 88px;
+    }
 }
 </style>
 </head>
 <body>
 <div class="login-card">
-<div class="login-icon"><i class="fa-solid fa-pills"></i></div>
+<div class="login-icon"><img src="pharmacy.png" alt="Pharmacy Logo" class="login-logo"></div>
 <h4 class="text-center fw-bold mb-1">Pharmacy Inventory</h4>
 <p class="text-center text-muted mb-4">Authorized access only</p>
 
