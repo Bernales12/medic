@@ -206,6 +206,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 16px;
 }
 .login-card {
     width: 100%;
@@ -240,6 +241,20 @@ body {
     border-color: #7c3aed;
     box-shadow: 0 0 0 .2rem rgba(124, 58, 237, .15);
 }
+.password-toggle-wrap { position: relative; }
+.password-toggle-btn {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: none;
+    background: transparent;
+    color: #8b81a3;
+    padding: 4px 6px;
+}
+@media (max-width: 480px) {
+    .login-card { padding: 1.75rem 1.5rem; border-radius: .75rem; }
+}
 </style>
 </head>
 <body>
@@ -258,12 +273,17 @@ body {
 
 <div class="mb-3">
 <label class="form-label">Username</label>
-<input type="text" name="username" class="form-control" required autofocus>
+<input type="text" name="username" class="form-control" required autofocus autocomplete="username">
 </div>
 
 <div class="mb-3">
 <label class="form-label">Password</label>
-<input type="password" name="password" class="form-control" required>
+<div class="password-toggle-wrap">
+<input type="password" name="password" id="loginPassword" class="form-control" required autocomplete="current-password">
+<button type="button" class="password-toggle-btn" id="togglePassword" aria-label="Show password">
+<i class="fa-solid fa-eye"></i>
+</button>
+</div>
 </div>
 
 <button type="submit" class="btn btn-purple w-100 mt-2">
@@ -272,6 +292,22 @@ body {
 
 </form>
 </div>
+
+<script>
+(function () {
+    var toggleBtn = document.getElementById('togglePassword');
+    var pwInput = document.getElementById('loginPassword');
+    if (toggleBtn && pwInput) {
+        toggleBtn.addEventListener('click', function () {
+            var isHidden = pwInput.type === 'password';
+            pwInput.type = isHidden ? 'text' : 'password';
+            toggleBtn.innerHTML = isHidden
+                ? '<i class="fa-solid fa-eye-slash"></i>'
+                : '<i class="fa-solid fa-eye"></i>';
+        });
+    }
+})();
+</script>
 
 </body>
 </html>
@@ -1494,6 +1530,28 @@ body {
     color: var(--muted);
 }
 
+.mobile-menu-btn {
+    display: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--purple-600);
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    margin-right: 12px;
+}
+
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 8, 32, .55);
+    z-index: 1040;
+}
+
 
 /* ============================================================
    CARDS
@@ -1761,11 +1819,55 @@ a:hover { color: var(--purple-700); }
 ::-webkit-scrollbar-thumb:hover { background: var(--purple-500); }
 
 
+/* ============================================================
+   RESPONSIVE / MOBILE
+============================================================ */
+
+@media (max-width: 991.98px) {
+
+    .mobile-menu-btn { display: inline-flex; }
+
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        width: 260px;
+        max-width: 82vw;
+        z-index: 1050;
+        transform: translateX(-100%);
+        transition: transform .25s ease;
+        overflow-y: auto;
+        box-shadow: 10px 0 30px rgba(0,0,0,.25);
+    }
+
+    .sidebar.show { transform: translateX(0); }
+
+    .sidebar-overlay.show { display: block; }
+
+    .col-md-10 { width: 100%; }
+}
+
 @media (max-width: 768px) {
-    .sidebar { min-height: auto; }
     .kpi-number { font-size: 21px; }
-    .top-navbar { padding: 15px !important; }
-    .top-navbar h4 { font-size: 17px; }
+    .top-navbar { padding: 12px 15px !important; flex-wrap: wrap; row-gap: 10px; }
+    .top-navbar h4 { font-size: 16px; }
+    .top-navbar small { font-size: 11.5px; }
+    .top-navbar > div:last-child {
+        width: 100%;
+        justify-content: flex-start !important;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .top-navbar .btn-sm { font-size: 12px; padding: 6px 10px; }
+    .p-4 { padding: 1rem !important; }
+    .kpi-card { padding: 14px; }
+    .card-custom.p-4 { padding: 1rem !important; }
+    .modal-dialog { margin: .75rem; }
+}
+
+@media (max-width: 480px) {
+    .top-navbar span.text-muted { display: none; }
 }
 
 </style>
@@ -1774,6 +1876,8 @@ a:hover { color: var(--purple-700); }
 
 
 <body>
+
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
 
 <div class="container-fluid p-0">
 
@@ -1784,7 +1888,7 @@ a:hover { color: var(--purple-700); }
      SIDEBAR
 =========================================================== -->
 
-<div class="col-md-2 sidebar d-flex flex-column justify-content-between">
+<div class="col-md-2 sidebar d-flex flex-column justify-content-between" id="sidebarPanel">
 
 <div>
 
@@ -1861,9 +1965,14 @@ a:hover { color: var(--purple-700); }
 
 <div class="top-navbar px-4 py-3 d-flex justify-content-between align-items-center">
 
+<div class="d-flex align-items-center">
+<button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">
+<i class="fa-solid fa-bars"></i>
+</button>
 <div>
 <h4 class="mb-0">Pharmacy Dashboard</h4>
 <small>Real-time overview of medicine stock levels</small>
+</div>
 </div>
 
 <div class="d-flex align-items-center">
@@ -2726,14 +2835,60 @@ $expired = $exp !== false && $exp <= $todayTimestamp;
 
 </div>
 
-</div>
-
 
 <!-- ==========================================================
      BOOTSTRAP JAVASCRIPT
 =========================================================== -->
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+
+<!-- ==========================================================
+     MOBILE SIDEBAR TOGGLE
+=========================================================== -->
+
+<script>
+(function () {
+    var sidebar = document.getElementById('sidebarPanel');
+    var overlay = document.getElementById('sidebarOverlay');
+    var menuBtn = document.getElementById('mobileMenuBtn');
+
+    function openSidebar() {
+        sidebar.classList.add('show');
+        overlay.classList.add('show');
+    }
+
+    function closeSidebar() {
+        sidebar.classList.remove('show');
+        overlay.classList.remove('show');
+    }
+
+    if (menuBtn) {
+        menuBtn.addEventListener('click', openSidebar);
+    }
+
+    if (overlay) {
+        overlay.addEventListener('click', closeSidebar);
+    }
+
+    // Close the mobile sidebar automatically after picking a section
+    var navButtons = document.querySelectorAll('#sidebarNav .nav-link');
+    navButtons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (window.innerWidth <= 991) {
+                closeSidebar();
+            }
+        });
+    });
+
+    // If the window is resized back to desktop size, make sure sidebar state resets
+    window.addEventListener('resize', function () {
+        if (window.innerWidth > 991) {
+            closeSidebar();
+        }
+    });
+})();
+</script>
 
 
 <!-- ==========================================================
