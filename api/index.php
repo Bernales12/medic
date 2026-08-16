@@ -877,7 +877,8 @@ $tabByAction = [
     'add_medicine' => 'products',
     'edit_medicine' => 'products',
     'delete_medicine' => 'products',
-    'stock_out' => 'stockout'
+    'stock_out' => 'stockout',
+    'stock_out_batch' => 'stockout'
 ];
 
 $activeTab = $tabByAction[$_POST['action'] ?? ''] ?? 'dashboard';
@@ -994,7 +995,8 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
         /* ====================================================
-           STOCK OUT / DISPENSE
+           STOCK OUT / DISPENSE  (single item — kept for
+           backward compatibility, no longer used by the UI)
         ==================================================== */
 
         elseif ($action === 'stock_out') {
@@ -1054,6 +1056,124 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $message = "Successfully dispensed " . $qtyOut . " unit(s) of " . $fullName . ".";
                     $messageType = "success";
+                }
+            }
+        }
+
+
+        /* ====================================================
+           STOCK OUT / DISPENSE — BATCH (multi-medicine list)
+           Lets the user add several medicines to a list first,
+           then process/confirm the whole dispense transaction
+           at once. All-or-nothing: if any line item fails
+           validation, nothing is dispensed and the specific
+           problem(s) are reported back.
+        ==================================================== */
+
+        elseif ($action === 'stock_out_batch') {
+
+            $recipient = trim($_POST['recipient'] ?? '');
+            $itemsJson = $_POST['items_json'] ?? '[]';
+            $items = json_decode($itemsJson, true);
+
+            if ($recipient === '') {
+
+                $message = "Patient / Recipient is required.";
+                $messageType = "danger";
+
+            } elseif (!is_array($items) || count($items) === 0) {
+
+                $message = "Please add at least one medicine to the list before confirming dispense.";
+                $messageType = "danger";
+
+            } else {
+
+                processExpiredMedicinesDb();
+
+                $pdo = db();
+                $errors = [];
+                $dispensedSummaries = [];
+
+                $pdo->beginTransaction();
+
+                try {
+
+                    foreach ($items as $item) {
+
+                        $key = trim((string)($item['medicine_key'] ?? ''));
+                        $qtyOut = intval($item['qty_out'] ?? 0);
+
+                        $medItem = $key !== '' ? fetchMedicine($key) : null;
+
+                        if (!$medItem) {
+                            $errors[] = "A selected medicine could not be found in inventory.";
+                            continue;
+                        }
+
+                        $medName = medicineFullName($medItem);
+
+                        if ($qtyOut < 1) {
+                            $errors[] = "$medName: quantity must be at least 1.";
+                            continue;
+                        }
+
+                        $expiration = $medItem['expiration_date'] ?? '';
+                        $today = strtotime(date('Y-m-d'));
+                        $isExpired = false;
+
+                        if (!empty($expiration)) {
+
+                            $expirationTimestamp = strtotime($expiration);
+
+                            if ($expirationTimestamp !== false && $expirationTimestamp <= $today) {
+                                $isExpired = true;
+                            }
+                        }
+
+                        if ($isExpired) {
+                            $errors[] = "$medName has already expired and cannot be dispensed.";
+                            continue;
+                        }
+
+                        if (intval($medItem['quantity']) < $qtyOut) {
+                            $errors[] = "$medName: not enough stock (available " . intval($medItem['quantity']) . ", requested $qtyOut).";
+                            continue;
+                        }
+
+                        decrementMedicineStock($key, $qtyOut);
+
+                        $updatedMed = fetchMedicine($key);
+                        $fullName = medicineFullName($updatedMed);
+                        $dateIso = date('Y-m-d');
+
+                        insertDispenseLog($dateIso, $fullName, $updatedMed['batch_number'] ?? '', $qtyOut, $recipient);
+
+                        $dispensedSummaries[] = $qtyOut . ' unit(s) of ' . $fullName;
+                    }
+
+                    if (!empty($errors)) {
+
+                        $pdo->rollBack();
+
+                        $message = "Dispense cancelled — " . implode(' ', $errors);
+                        $messageType = "danger";
+
+                    } else {
+
+                        $pdo->commit();
+
+                        $message = "Successfully dispensed to " . $recipient . ": " . implode(', ', $dispensedSummaries) . ".";
+                        $messageType = "success";
+                    }
+
+                } catch (Exception $e) {
+
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+
+                    $message = "Dispense failed: " . $e->getMessage();
+                    $messageType = "danger";
                 }
             }
         }
@@ -1784,6 +1904,8 @@ h4, h5, h6 { color: var(--purple-950); }
 .btn-danger { background: var(--danger); border-color: var(--danger); }
 .btn-danger:hover { background: #be123c; border-color: #be123c; }
 
+.btn-danger:disabled { background: #f3a9b9; border-color: #f3a9b9; opacity: .8; }
+
 .btn-secondary { background: #6b7280; border-color: #6b7280; }
 
 
@@ -1883,6 +2005,43 @@ h4, h5, h6 { color: var(--purple-950); }
     border-radius: 20px;
     background: #fef1f3;
     color: var(--danger);
+}
+
+
+/* DISPENSE LIST (cart-style list before confirming) */
+
+.dispense-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    background: #faf8ff;
+}
+
+.dispense-list-item .dl-name { font-weight: 700; font-size: 13.5px; }
+.dispense-list-item .dl-meta { font-size: 11.5px; color: var(--muted); }
+
+.dispense-list-qty {
+    font-weight: 800;
+    color: var(--purple-600);
+    background: var(--purple-100);
+    border-radius: 20px;
+    padding: 3px 12px;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.dispense-list-empty {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    padding: 18px 10px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
 }
 
 
@@ -2656,7 +2815,7 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 <div class="d-flex justify-content-between align-items-center mb-3">
 <div>
 <h4>Dispense / Stock-Out</h4>
-<small class="text-muted">Every transaction is automatically recorded.</small>
+<small class="text-muted">Add each medicine to the list, then confirm dispense once to process everything together.</small>
 </div>
 <a href="?export=dispensing&month=<?php echo date('m'); ?>&year=<?php echo date('Y'); ?>" class="btn btn-danger">
 <i class="fa-solid fa-file-excel me-1"></i>Current Month Excel
@@ -2667,14 +2826,15 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 <div class="card-custom p-4 mb-4">
 <h5 class="mb-3"><i class="fa-solid fa-truck-ramp-box text-danger me-2"></i>Dispense Medicine</h5>
 
-<form method="POST">
-<input type="hidden" name="action" value="stock_out">
+<!-- STEP 1: pick a medicine + qty, add it to the list. Repeat for as many
+     medicines as needed. Works fine with just a single medicine too —
+     add it once, then confirm. -->
 
-<div class="row g-3">
+<div class="row g-3 align-items-end mb-3">
 
 <div class="col-md-6">
 <label class="form-label">Select Medicine</label>
-<select name="medicine_key" id="medicineSelect" class="form-select" required>
+<select id="medicineSelect" class="form-select">
 <option value="">Type or select a medicine...</option>
 <?php foreach ($medicineInventory as $key => $med): ?>
 <?php
@@ -2689,21 +2849,54 @@ $expired = $exp !== false && $exp <= $todayTimestamp;
 </div>
 
 <div class="col-md-2">
-<label class="form-label">Quantity Out</label>
-<input type="number" name="qty_out" class="form-control" min="1" value="1" required>
+<label class="form-label">Quantity</label>
+<input type="number" id="qtyOutInput" class="form-control" min="1" value="1">
 </div>
 
 <div class="col-md-4">
+<button type="button" id="addToListBtn" class="btn btn-outline-primary w-100">
+<i class="fa-solid fa-plus me-1"></i>Add to List
+</button>
+</div>
+
+</div>
+
+
+<!-- STEP 2: the running list of medicines about to be dispensed -->
+
+<div class="mb-3">
+<label class="form-label mb-2">Medicines to Dispense (<span id="dispenseListCount">0</span>)</label>
+<div id="dispenseListWrap">
+<div class="dispense-list-empty" id="dispenseListEmpty">
+No medicines added yet. Select a medicine above and click "Add to List".
+</div>
+<div id="dispenseListBody"></div>
+</div>
+</div>
+
+
+<!-- STEP 3: recipient + confirm the whole batch at once -->
+
+<form method="POST" id="dispenseForm">
+<input type="hidden" name="action" value="stock_out_batch">
+<input type="hidden" name="items_json" id="itemsJsonInput" value="[]">
+
+<div class="row g-3">
+
+<div class="col-md-8">
 <label class="form-label">Patient / Recipient</label>
 <input type="text" name="recipient" class="form-control" placeholder="Patient / Ward" required>
 </div>
 
-<div class="col-12">
-<button class="btn btn-danger"><i class="fa-solid fa-minus-circle me-1"></i>Confirm Dispense</button>
+<div class="col-md-4 d-flex align-items-end">
+<button type="submit" id="confirmDispenseBtn" class="btn btn-danger w-100" disabled>
+<i class="fa-solid fa-minus-circle me-1"></i>Confirm Dispense
+</button>
 </div>
 
 </div>
 </form>
+
 </div>
 
 
@@ -2966,8 +3159,6 @@ $expired = $exp !== false && $exp <= $todayTimestamp;
 
 </div>
 
-</div>
-
 
 <!-- ==========================================================
      BOOTSTRAP JAVASCRIPT
@@ -3033,7 +3224,7 @@ $expired = $exp !== false && $exp <= $todayTimestamp;
 (function () {
     var medicineSelectEl = document.getElementById('medicineSelect');
     if (medicineSelectEl && typeof Choices !== 'undefined') {
-        new Choices(medicineSelectEl, {
+        medicineSelectEl.choicesInstance = new Choices(medicineSelectEl, {
             searchEnabled: true,
             searchPlaceholderValue: 'Type to search medicines...',
             itemSelectText: '',
@@ -3044,6 +3235,150 @@ $expired = $exp !== false && $exp <= $todayTimestamp;
             fuseOptions: { threshold: 0.3 }
         });
     }
+})();
+</script>
+
+
+<!-- ==========================================================
+     DISPENSE LIST (add multiple medicines, then confirm once)
+=========================================================== -->
+
+<script>
+(function () {
+
+    // key -> { name, batch, available }
+    var medicineData = <?php echo json_encode(array_map(function ($m) {
+        return [
+            'name' => medicineFullName($m),
+            'batch' => $m['batch_number'] ?? '',
+            'available' => intval($m['quantity'] ?? 0)
+        ];
+    }, $medicineInventory)); ?>;
+
+    var dispenseList = [];
+
+    var selectEl = document.getElementById('medicineSelect');
+    var qtyEl = document.getElementById('qtyOutInput');
+    var addBtn = document.getElementById('addToListBtn');
+    var listBody = document.getElementById('dispenseListBody');
+    var listEmpty = document.getElementById('dispenseListEmpty');
+    var listCount = document.getElementById('dispenseListCount');
+    var itemsJsonInput = document.getElementById('itemsJsonInput');
+    var confirmBtn = document.getElementById('confirmDispenseBtn');
+    var dispenseForm = document.getElementById('dispenseForm');
+
+    function resetSelection() {
+        if (selectEl.choicesInstance) {
+            selectEl.choicesInstance.setChoiceByValue('');
+        } else {
+            selectEl.value = '';
+        }
+        qtyEl.value = 1;
+    }
+
+    function renderList() {
+
+        listBody.innerHTML = '';
+        listCount.textContent = dispenseList.length;
+
+        if (dispenseList.length === 0) {
+            listEmpty.style.display = 'block';
+            confirmBtn.disabled = true;
+        } else {
+            listEmpty.style.display = 'none';
+            confirmBtn.disabled = false;
+        }
+
+        dispenseList.forEach(function (item, idx) {
+
+            var info = medicineData[item.medicine_key] || { name: item.medicine_key, batch: '', available: null };
+
+            var row = document.createElement('div');
+            row.className = 'dispense-list-item';
+
+            var metaParts = [];
+            if (info.batch) { metaParts.push('Batch ' + info.batch); }
+            if (info.available !== null) { metaParts.push(info.available + ' in stock'); }
+
+            row.innerHTML =
+                '<div>' +
+                    '<div class="dl-name">' + info.name + '</div>' +
+                    '<div class="dl-meta">' + metaParts.join(' &middot; ') + '</div>' +
+                '</div>' +
+                '<div class="d-flex align-items-center gap-2">' +
+                    '<span class="dispense-list-qty">Qty: ' + item.qty_out + '</span>' +
+                    '<button type="button" class="btn btn-sm btn-outline-danger removeItemBtn" data-idx="' + idx + '">' +
+                        '<i class="fa-solid fa-xmark"></i>' +
+                    '</button>' +
+                '</div>';
+
+            listBody.appendChild(row);
+        });
+
+        listBody.querySelectorAll('.removeItemBtn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var idx = parseInt(btn.getAttribute('data-idx'), 10);
+                dispenseList.splice(idx, 1);
+                renderList();
+            });
+        });
+
+        itemsJsonInput.value = JSON.stringify(dispenseList);
+    }
+
+    if (addBtn) {
+
+        addBtn.addEventListener('click', function () {
+
+            var key = selectEl.value;
+            var qty = parseInt(qtyEl.value, 10);
+
+            if (!key) {
+                alert('Please select a medicine first.');
+                return;
+            }
+
+            if (!qty || qty < 1) {
+                alert('Quantity must be at least 1.');
+                return;
+            }
+
+            var info = medicineData[key];
+            var existing = dispenseList.find(function (i) { return i.medicine_key === key; });
+            var combinedQty = qty + (existing ? existing.qty_out : 0);
+
+            if (info && combinedQty > info.available) {
+                alert('Only ' + info.available + ' unit(s) of ' + info.name + ' are available in stock.');
+                return;
+            }
+
+            if (existing) {
+                existing.qty_out = combinedQty;
+            } else {
+                dispenseList.push({ medicine_key: key, qty_out: qty });
+            }
+
+            renderList();
+            resetSelection();
+        });
+    }
+
+    if (dispenseForm) {
+
+        dispenseForm.addEventListener('submit', function (e) {
+
+            if (dispenseList.length === 0) {
+                e.preventDefault();
+                alert('Please add at least one medicine to the list before confirming dispense.');
+                return;
+            }
+
+            itemsJsonInput.value = JSON.stringify(dispenseList);
+        });
+    }
+
+    renderList();
+
 })();
 </script>
 
@@ -3139,4 +3474,3 @@ new Chart(document.getElementById('statusDonut'), {
 </body>
 
 </html>
-
