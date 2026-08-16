@@ -1098,6 +1098,20 @@ if (empty($dbError)) {
    POST ACTIONS
 ============================================================ */
 
+/*
+ * Post/Redirect/Get:
+ * A POST must never remain as the browser's current page.
+ * Otherwise Refresh resubmits the INSERT and creates duplicates.
+ */
+if (!empty($_SESSION['flash_message'])) {
+    $message = $_SESSION['flash_message'];
+    $messageType = $_SESSION['flash_message_type'] ?? 'success';
+
+    unset($_SESSION['flash_message']);
+    unset($_SESSION['flash_message_type']);
+}
+
+
 $tabByAction = [
     'add_medicine' => 'products',
     'edit_medicine' => 'products',
@@ -1106,7 +1120,7 @@ $tabByAction = [
     'stock_out_batch' => 'stockout'
 ];
 
-$activeTab = $tabByAction[$_POST['action'] ?? ''] ?? 'dashboard';
+$activeTab = $_GET['tab'] ?? ($tabByAction[$_POST['action'] ?? ''] ?? 'dashboard');
 
 if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
@@ -1510,15 +1524,29 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        /* Refresh in-memory data after any mutation */
+        /*
+         * IMPORTANT: redirect after every POST.
+         * This is the fix for "refresh creates another duplicate".
+         */
+        $_SESSION['flash_message'] = $message ?? '';
+        $_SESSION['flash_message_type'] = $messageType ?? 'success';
 
-        processExpiredMedicinesDb();
-        $medicineInventory = fetchAllMedicines();
-        $dispenseLogs = fetchAllDispenseLogs();
+        $redirectTab = $tabByAction[$action] ?? 'dashboard';
+        $baseUrl = strtok($_SERVER['REQUEST_URI'], '?');
+
+        header('Location: ' . $baseUrl . '?tab=' . urlencode($redirectTab));
+        exit;
 
     } catch (PDOException $e) {
 
-        $dbError = $e->getMessage();
+        $_SESSION['flash_message'] = 'Database error: ' . $e->getMessage();
+        $_SESSION['flash_message_type'] = 'danger';
+
+        $redirectTab = $tabByAction[$action] ?? 'dashboard';
+        $baseUrl = strtok($_SERVER['REQUEST_URI'], '?');
+
+        header('Location: ' . $baseUrl . '?tab=' . urlencode($redirectTab));
+        exit;
     }
 }
 
