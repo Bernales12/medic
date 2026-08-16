@@ -401,6 +401,65 @@ function fetchMedicine($sku)
     return $row ?: null;
 }
 
+function findMedicineMatch($data, $excludeSku = null)
+{
+    /* Match every medicine field except SKU, quantity and batch number. */
+    $sql = "
+        SELECT *
+        FROM medicines
+        WHERE inventory_name = ?
+          AND strength = ?
+          AND unit = ?
+          AND dosage_form = ?
+          AND generic_name = ?
+          AND category = ?
+          AND low_stock_threshold = ?
+          AND COALESCE(expiration_date::text, '') = ?
+    ";
+
+    $params = [
+        $data['inventory_name'],
+        $data['strength'],
+        $data['unit'],
+        $data['dosage_form'],
+        $data['generic_name'],
+        $data['category'],
+        $data['low_stock_threshold'],
+        $data['expiration_date'] ?: ''
+    ];
+
+    if ($excludeSku !== null && $excludeSku !== '') {
+        $sql .= " AND sku <> ?";
+        $params[] = $excludeSku;
+    }
+
+    $sql .= " ORDER BY created_at DESC, sku DESC LIMIT 1";
+
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+function mergeMedicineStock($targetSku, $quantityToAdd, $newBatchNumber)
+{
+    $stmt = db()->prepare("
+        UPDATE medicines
+        SET quantity = quantity + ?,
+            batch_number = ?
+        WHERE sku = ?
+    ");
+
+    $stmt->execute([
+        max(0, intval($quantityToAdd)),
+        $newBatchNumber,
+        $targetSku
+    ]);
+
+    return $stmt->rowCount() > 0;
+}
+
 function insertMedicine($sku, $data)
 {
     $stmt = db()->prepare("
@@ -907,15 +966,10 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $lowStockThreshold = max(1, intval($_POST['low_stock_threshold'] ?? $DEFAULT_LOW_STOCK));
 
             if ($inventoryName === '') {
-
                 $message = "Medicine name is required.";
                 $messageType = "danger";
-
             } else {
-
-                $autoSku = generateMedicineKey();
-
-                insertMedicine($autoSku, [
+                $medicineData = [
                     'inventory_name' => $inventoryName,
                     'strength' => $strength,
                     'unit' => $unit,
@@ -926,10 +980,30 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     'expiration_date' => $expirationDate,
                     'category' => $category,
                     'low_stock_threshold' => $lowStockThreshold
-                ]);
+                ];
 
-                $message = "Medicine successfully added to inventory.";
-                $messageType = "success";
+                /* Batch number is ignored when deciding whether to merge. */
+                $existingMatch = findMedicineMatch($medicineData);
+
+                if ($existingMatch) {
+                    mergeMedicineStock(
+                        $existingMatch['sku'],
+                        $quantity,
+                        $batchNumber
+                    );
+
+                    $message =
+                        "Medicine already exists. Stock merged successfully. " .
+                        "Quantity increased by " . $quantity .
+                        " and the newest batch number was saved.";
+                    $messageType = "success";
+                } else {
+                    $autoSku = generateMedicineKey();
+                    insertMedicine($autoSku, $medicineData);
+
+                    $message = "Medicine successfully added to inventory.";
+                    $messageType = "success";
+                }
             }
         }
 
@@ -944,8 +1018,7 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $existing = fetchMedicine($key);
 
             if ($existing) {
-
-                $updated = updateMedicine($key, [
+                $updatedData = [
                     'inventory_name' => trim($_POST['inventory_name'] ?? ''),
                     'strength' => trim($_POST['strength'] ?? ''),
                     'unit' => trim($_POST['unit'] ?? ''),
@@ -956,13 +1029,53 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     'expiration_date' => $_POST['expiration_date'] ?? '',
                     'category' => trim($_POST['category'] ?? ''),
                     'low_stock_threshold' => max(1, intval($_POST['low_stock_threshold'] ?? $DEFAULT_LOW_STOCK))
-                ]);
+                ];
 
-                $message = "Medicine information successfully updated.";
-                $messageType = "success";
+                /* Exclude the current row from the merge search. */
+                $matchingMedicine = findMedicineMatch($updatedData, $key);
 
+                if ($matchingMedicine) {
+                    $pdo = db();
+                    $pdo->beginTransaction();
+
+                    try {
+                        /* Edited quantity is treated as incoming stock. */
+                        mergeMedicineStock(
+                            $matchingMedicine['sku'],
+                            $updatedData['quantity'],
+                            $updatedData['batch_number']
+                        );
+
+                        /* Remove the original row after its stock is merged. */
+                        $deleteStmt = $pdo->prepare(
+                            "DELETE FROM medicines WHERE sku = ?"
+                        );
+                        $deleteStmt->execute([$key]);
+
+                        $pdo->commit();
+
+                        $message =
+                            "Medicine updated and merged successfully. " .
+                            "Quantities were combined and the newest batch number was kept.";
+                        $messageType = "success";
+                    } catch (Throwable $e) {
+                        if ($pdo->inTransaction()) {
+                            $pdo->rollBack();
+                        }
+                        throw $e;
+                    }
+                } else {
+                    $updated = updateMedicine($key, $updatedData);
+
+                    if ($updated) {
+                        $message = "Medicine information successfully updated.";
+                        $messageType = "success";
+                    } else {
+                        $message = "No changes were made.";
+                        $messageType = "warning";
+                    }
+                }
             } else {
-
                 $message = "Medicine could not be found.";
                 $messageType = "danger";
             }
