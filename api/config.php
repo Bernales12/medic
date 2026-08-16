@@ -24,7 +24,7 @@ define('DB_HOST', 'aws-0-ap-northeast-1.pooler.supabase.com');
 define('DB_PORT', '6543');
 define('DB_NAME', 'postgres');
 define('DB_USER', 'postgres.vxruytsfmgqnwmzdcmmd');
-define('DB_PASS', 'your-actual-password-here');
+define('DB_PASS', 'DB_PASS','Bernales@#2005!');
 
 // App settings (unchanged from the original)
 $DEFAULT_LOW_STOCK = 200;
