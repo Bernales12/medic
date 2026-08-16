@@ -446,7 +446,7 @@ body {
 </head>
 <body>
 <div class="login-card">
-<div class="login-icon"><img src="pharmacy.png" alt="Pharmacy Logo" class="login-logo"></div>
+<div class="login-icon"><img src="https://raw.githubusercontent.com/Bernales12/medic/main/api/pharmacy.png" alt="Pharmacy Logo" class="login-logo"></div>
 <h4 class="text-center fw-bold mb-1">Pharmacy Inventory</h4>
 <p class="text-center text-muted mb-4">Authorized access only</p>
 
@@ -495,7 +495,7 @@ body {
 })();
 </script>
 
-\n<style>\n.list-toolbar{margin:0 0 14px 0;max-width:420px}.list-search{width:100%}.list-row.list-hidden{display:none}.list-footer{text-align:center;margin-top:14px}.view-all-btn{min-width:110px}\n</style>\n<script>\ndocument.addEventListener('DOMContentLoaded',function(){\n  function setup(table){\n    if(!table)return;\n    var rows=Array.prototype.slice.call(table.querySelectorAll('tbody tr.list-row'));\n    var limit=parseInt(table.getAttribute('data-limit')||'7',10);\n    var search=document.querySelector('.list-search[data-table="'+table.id+'"]');\n    var button=document.querySelector('.view-all-btn[data-table="'+table.id+'"]');\n    var expanded=false;\n    function render(){\n      var q=search ? search.value.toLowerCase().trim() : '';\n      var matches=rows.filter(function(row){return !q || row.textContent.toLowerCase().indexOf(q)!==-1;});\n      rows.forEach(function(row){row.classList.add('list-hidden');});\n      matches.forEach(function(row,i){if(expanded || i<limit)row.classList.remove('list-hidden');});\n      if(button){button.style.display=matches.length>limit?'inline-block':'none';button.textContent=expanded?'Show Less':'View All';}\n    }\n    if(search)search.addEventListener('input',function(){expanded=true;render();});\n    if(button)button.addEventListener('click',function(){expanded=!expanded;render();});\n    render();\n  }\n  setup(document.getElementById('completeMedicineList'));\n  setup(document.getElementById('deliveryInventoryList'));\n  setup(document.getElementById('deliveryHistoryList'));\n});\n</script>\n</body>
+
 </html>
 <?php
 }
@@ -2723,7 +2723,7 @@ a:hover { color: var(--purple-700); }
 <div>
 
 <div class="sidebar-logo hospital-brand">
-<img src="pharmacy.png" alt="Bangsamoro Regional Hospital and Medical Center Pharmacy Department " class="hospital-logo">
+<img src="https://raw.githubusercontent.com/Bernales12/medic/main/api/pharmacy.png" alt="Bangsamoro Regional Hospital and Medical Center Pharmacy Department " class="hospital-logo">
     <div class="hospital-brand-text">
         <strong>PHARMACY</strong>
         <small>INVENTORY CONTROL</small>
@@ -3245,7 +3245,7 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 
 <div class="card-custom p-4">
 <div class="card-title-row">
-<div><h5>Complete Medicine List</h5><small class="text-muted">Showing 7 medicines</small></div>
+<div><h5>Complete Medicine List</h5><small class="text-muted">Showing up to 7 medicines</small></div>
 <span class="badge bg-primary"><?php echo $totalProducts; ?> items</span>
 </div>
 <div class="list-toolbar">
@@ -3310,6 +3310,7 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 </tbody>
 </table>
 </div>
+<div class="list-footer"><button type="button" class="btn btn-outline-primary view-all-btn" data-table="completeMedicineList">View All</button></div>
 </div>
 
 
@@ -4210,6 +4211,88 @@ new Chart(document.getElementById('statusDonut'), {
 </script>
 
 
+
+<style>
+/* ============================================================
+   LIST LIMIT / VIEW ALL FIX
+============================================================ */
+.list-toolbar { margin: 0 0 14px 0; max-width: 420px; }
+.list-search { width: 100%; }
+.list-row.list-hidden { display: none !important; }
+.list-footer { text-align: center; margin-top: 14px; }
+.view-all-btn { min-width: 110px; }
+</style>
+
+<script>
+/* ============================================================
+   VIEW ALL / SHOW LESS FOR INVENTORY & DELIVERY TABLES
+   The previous code was placed in the login-page renderer and
+   was also written with literal \\n characters, so it never ran
+   on the dashboard. This version runs on the dashboard itself.
+============================================================ */
+document.addEventListener('DOMContentLoaded', function () {
+    function setupLimitedTable(table) {
+        if (!table) return;
+
+        var rows = Array.prototype.slice.call(
+            table.querySelectorAll('tbody tr.list-row')
+        );
+        var limit = parseInt(table.getAttribute('data-limit') || '7', 10);
+        if (!Number.isFinite(limit) || limit < 1) limit = 7;
+
+        var search = document.querySelector(
+            '.list-search[data-table="' + table.id + '"]'
+        );
+        var button = document.querySelector(
+            '.view-all-btn[data-table="' + table.id + '"]'
+        );
+
+        var expanded = false;
+
+        function render() {
+            var query = search ? search.value.toLowerCase().trim() : '';
+            var matches = rows.filter(function (row) {
+                return !query || row.textContent.toLowerCase().indexOf(query) !== -1;
+            });
+
+            rows.forEach(function (row) {
+                row.classList.add('list-hidden');
+            });
+
+            matches.forEach(function (row, index) {
+                if (expanded || index < limit) {
+                    row.classList.remove('list-hidden');
+                }
+            });
+
+            if (button) {
+                button.style.display = matches.length > limit ? 'inline-block' : 'none';
+                button.textContent = expanded ? 'Show Less' : 'View All';
+            }
+        }
+
+        if (search) {
+            search.addEventListener('input', function () {
+                expanded = true;
+                render();
+            });
+        }
+
+        if (button) {
+            button.addEventListener('click', function () {
+                expanded = !expanded;
+                render();
+            });
+        }
+
+        render();
+    }
+
+    setupLimitedTable(document.getElementById('completeMedicineList'));
+    setupLimitedTable(document.getElementById('deliveryInventoryList'));
+    setupLimitedTable(document.getElementById('deliveryHistoryList'));
+});
+</script>
 </body>
 
 </html>
