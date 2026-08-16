@@ -17,6 +17,9 @@ session_start();
 | - Excel-compatible inventory export
 | - Excel-compatible dispensing export
 | - DARK PURPLE THEME
+| - Same-product rows (batch number AND expiration date may differ)
+|   are automatically merged into a single row, keeping the soonest
+|   expiration date and the newest batch number.
 |--------------------------------------------------------------------------
 */
 
@@ -60,14 +63,6 @@ function db()
 
 /* ============================================================
    SCHEMA BOOTSTRAP
-   Creates the tables (if missing) and seeds starter data
-   (if the medicines table is empty) so the app works the
-   moment the database itself exists.
-
-   NOTE: You can also run supabase_schema.sql once in the
-   Supabase SQL editor instead of relying on this. Either
-   path is safe — this function only creates tables that
-   don't already exist and only seeds empty tables.
 ============================================================ */
 
 function ensureSchema()
@@ -162,8 +157,6 @@ function h($value)
 
 /* ============================================================
    AUTHENTICATION HELPERS
-   (unchanged — still your own users table + password_hash /
-   password_verify, no Supabase Auth involved)
 ============================================================ */
 
 function findUserByUsername($username)
@@ -401,9 +394,17 @@ function fetchMedicine($sku)
     return $row ?: null;
 }
 
+/* ============================================================
+   MATCHING / MERGING
+   Two rows are considered "the same product" if every field below
+   matches. Batch number and expiration date are deliberately left
+   out, so the same drug arriving in a new batch or with a new
+   expiration date still merges into a single inventory row instead
+   of creating a duplicate.
+============================================================ */
+
 function findMedicineMatch($data, $excludeSku = null)
 {
-    /* Match every medicine field except SKU, quantity and batch number. */
     $sql = "
         SELECT *
         FROM medicines
@@ -414,7 +415,6 @@ function findMedicineMatch($data, $excludeSku = null)
           AND generic_name = ?
           AND category = ?
           AND low_stock_threshold = ?
-          AND COALESCE(expiration_date::text, '') = ?
     ";
 
     $params = [
@@ -424,8 +424,7 @@ function findMedicineMatch($data, $excludeSku = null)
         $data['dosage_form'],
         $data['generic_name'],
         $data['category'],
-        $data['low_stock_threshold'],
-        $data['expiration_date'] ?: ''
+        $data['low_stock_threshold']
     ];
 
     if ($excludeSku !== null && $excludeSku !== '') {
@@ -442,22 +441,117 @@ function findMedicineMatch($data, $excludeSku = null)
     return $row ?: null;
 }
 
-function mergeMedicineStock($targetSku, $quantityToAdd, $newBatchNumber)
+/* Returns the earlier (soonest) of two expiration dates.
+   Accepts 'YYYY-MM-DD', '', or null. If only one side has a real
+   date, that date is kept (a known expiration is safer than none). */
+function earliestExpiration($dateA, $dateB)
 {
+    $dateA = $dateA ?: '';
+    $dateB = $dateB ?: '';
+
+    if ($dateA === '' && $dateB === '') {
+        return '';
+    }
+
+    if ($dateA === '') {
+        return $dateB;
+    }
+
+    if ($dateB === '') {
+        return $dateA;
+    }
+
+    return (strtotime($dateA) <= strtotime($dateB)) ? $dateA : $dateB;
+}
+
+function mergeMedicineStock($targetSku, $quantityToAdd, $newBatchNumber, $incomingExpirationDate = null)
+{
+    $current = fetchMedicine($targetSku);
+    $currentExpiration = $current['expiration_date'] ?? '';
+    $combinedExpiration = earliestExpiration($currentExpiration, $incomingExpirationDate);
+
     $stmt = db()->prepare("
         UPDATE medicines
         SET quantity = quantity + ?,
-            batch_number = ?
+            batch_number = ?,
+            expiration_date = ?
         WHERE sku = ?
     ");
 
     $stmt->execute([
         max(0, intval($quantityToAdd)),
         $newBatchNumber,
+        $combinedExpiration ?: null,
         $targetSku
     ]);
 
     return $stmt->rowCount() > 0;
+}
+
+/* ============================================================
+   CONSOLIDATE PRE-EXISTING DUPLICATE ROWS
+   Runs on every page load. If the medicines table already has more
+   than one row for the same product (e.g. rows created before
+   merging was in place, differing only by batch number and/or
+   expiration date), fold them into a single surviving row:
+     - quantities are summed
+     - the soonest expiration date is kept
+     - the newest batch number (from the most recently created row)
+       is kept
+   This makes the Dispense screen show exactly one row per product.
+============================================================ */
+
+function consolidateDuplicateMedicines()
+{
+    $pdo = db();
+
+    $rows = $pdo->query("SELECT * FROM medicines ORDER BY created_at ASC, sku ASC")->fetchAll();
+
+    $groups = [];
+
+    foreach ($rows as $row) {
+        $groupKey = implode('|', [
+            mb_strtolower(trim($row['inventory_name'])),
+            mb_strtolower(trim($row['strength'])),
+            mb_strtolower(trim($row['unit'])),
+            mb_strtolower(trim($row['dosage_form'])),
+            mb_strtolower(trim($row['generic_name'])),
+            mb_strtolower(trim($row['category'])),
+            intval($row['low_stock_threshold'])
+        ]);
+
+        $groups[$groupKey][] = $row;
+    }
+
+    foreach ($groups as $groupRows) {
+
+        if (count($groupRows) < 2) {
+            continue;
+        }
+
+        /* Rows are already ordered oldest -> newest; the last one is
+           the most recently created and becomes the surviving SKU,
+           so its batch number (the newest) is kept by default. */
+        $survivor = array_pop($groupRows);
+
+        $totalQty = intval($survivor['quantity']);
+        $expiration = $survivor['expiration_date'] ?? '';
+
+        foreach ($groupRows as $dupe) {
+            $totalQty += intval($dupe['quantity']);
+            $expiration = earliestExpiration($expiration, $dupe['expiration_date'] ?? '');
+        }
+
+        $pdo->prepare("
+            UPDATE medicines
+            SET quantity = ?, expiration_date = ?
+            WHERE sku = ?
+        ")->execute([$totalQty, $expiration ?: null, $survivor['sku']]);
+
+        foreach ($groupRows as $dupe) {
+            $pdo->prepare("DELETE FROM medicines WHERE sku = ?")->execute([$dupe['sku']]);
+        }
+    }
 }
 
 function insertMedicine($sku, $data)
@@ -897,6 +991,7 @@ try {
         exit;
     }
 
+    consolidateDuplicateMedicines();
     processExpiredMedicinesDb();
 
     $medicineInventory = fetchAllMedicines();
@@ -982,20 +1077,21 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     'low_stock_threshold' => $lowStockThreshold
                 ];
 
-                /* Batch number is ignored when deciding whether to merge. */
+                /* Batch number and expiration date are ignored when deciding whether to merge. */
                 $existingMatch = findMedicineMatch($medicineData);
 
                 if ($existingMatch) {
                     mergeMedicineStock(
                         $existingMatch['sku'],
                         $quantity,
-                        $batchNumber
+                        $batchNumber,
+                        $expirationDate
                     );
 
                     $message =
                         "Medicine already exists. Stock merged successfully. " .
                         "Quantity increased by " . $quantity .
-                        " and the newest batch number was saved.";
+                        ", the newest batch number was saved, and the soonest expiration date was kept.";
                     $messageType = "success";
                 } else {
                     $autoSku = generateMedicineKey();
@@ -1043,7 +1139,8 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
                         mergeMedicineStock(
                             $matchingMedicine['sku'],
                             $updatedData['quantity'],
-                            $updatedData['batch_number']
+                            $updatedData['batch_number'],
+                            $updatedData['expiration_date']
                         );
 
                         /* Remove the original row after its stock is merged. */
@@ -1056,7 +1153,7 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         $message =
                             "Medicine updated and merged successfully. " .
-                            "Quantities were combined and the newest batch number was kept.";
+                            "Quantities were combined, the newest batch number was kept, and the soonest expiration date was kept.";
                         $messageType = "success";
                     } catch (Throwable $e) {
                         if ($pdo->inTransaction()) {
@@ -1176,11 +1273,6 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         /* ====================================================
            STOCK OUT / DISPENSE — BATCH (multi-medicine list)
-           Lets the user add several medicines to a list first,
-           then process/confirm the whole dispense transaction
-           at once. All-or-nothing: if any line item fails
-           validation, nothing is dispensed and the specific
-           problem(s) are reported back.
         ==================================================== */
 
         elseif ($action === 'stock_out_batch') {
@@ -1348,6 +1440,7 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         /* Refresh in-memory data after any mutation */
 
+        consolidateDuplicateMedicines();
         processExpiredMedicinesDb();
         $medicineInventory = fetchAllMedicines();
         $dispenseLogs = fetchAllDispenseLogs();
@@ -1535,39 +1628,22 @@ $availableCount = max(0, $totalProducts - $lowStockCount - $expiringSoonCount - 
 <title>Pharmacy Inventory Management</title>
 
 
-<!-- ==========================================================
-     BOOTSTRAP
-=========================================================== -->
-
 <link
 href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
 rel="stylesheet">
 
-
-<!-- ==========================================================
-     FONT AWESOME
-=========================================================== -->
 
 <link
 rel="stylesheet"
 href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 
-<!-- ==========================================================
-     GOOGLE FONT
-=========================================================== -->
-
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 
-<!-- ==========================================================
-     CHOICES.JS (searchable "type or select" dropdowns)
-=========================================================== -->
-
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js@10.2.0/public/assets/styles/choices.min.css">
 <style>
-/* Make Choices.js match the existing purple theme / Bootstrap form-select look */
 .choices { margin-bottom: 0; }
 .choices__inner {
     background-color: #fff;
@@ -1600,16 +1676,8 @@ href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
 </style>
 
 
-<!-- ==========================================================
-     CHART.JS
-=========================================================== -->
-
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 
-
-<!-- ==========================================================
-     DASHBOARD-STYLE PURPLE THEME
-=========================================================== -->
 
 <style>
 
@@ -1654,10 +1722,6 @@ body {
     color: var(--text);
 }
 
-
-/* ============================================================
-   SIDEBAR
-============================================================ */
 
 .sidebar {
 
@@ -1756,8 +1820,6 @@ body {
 }
 
 
-/* QUICK INSIGHTS PANEL */
-
 .sidebar-insights {
     background: rgba(255, 255, 255, .05);
     border: 1px solid rgba(255, 255, 255, .08);
@@ -1810,19 +1872,11 @@ body {
 }
 
 
-/* ============================================================
-   MAIN AREA
-============================================================ */
-
 .col-md-10 {
     background: var(--background) !important;
     min-height: 100vh;
 }
 
-
-/* ============================================================
-   TOP NAVBAR
-============================================================ */
 
 .top-navbar {
     background: #ffffff;
@@ -1864,10 +1918,6 @@ body {
 }
 
 
-/* ============================================================
-   CARDS
-============================================================ */
-
 .card-custom {
     background: var(--card);
     border: 1px solid var(--border);
@@ -1895,10 +1945,6 @@ body {
     font-weight: 700;
 }
 
-
-/* ============================================================
-   KPI CARDS (icon-badge style)
-============================================================ */
 
 .kpi-card {
     display: flex;
@@ -1963,16 +2009,8 @@ body {
 .kpi-trend.neutral { color: var(--purple-600); background: var(--purple-100); }
 
 
-/* ============================================================
-   HEADINGS
-============================================================ */
-
 h4, h5, h6 { color: var(--purple-950); }
 
-
-/* ============================================================
-   TABLES
-============================================================ */
 
 .table-custom { --bs-table-bg: transparent; }
 
@@ -1990,10 +2028,6 @@ h4, h5, h6 { color: var(--purple-950); }
 .table-custom td { vertical-align: middle; border-color: #eee9f7; font-size: 13.5px; }
 .table-custom tbody tr:hover { background: #faf8ff; }
 
-
-/* ============================================================
-   BUTTONS
-============================================================ */
 
 .btn-primary {
     background: linear-gradient(135deg, var(--purple-500), var(--purple-600));
@@ -2022,10 +2056,6 @@ h4, h5, h6 { color: var(--purple-950); }
 .btn-secondary { background: #6b7280; border-color: #6b7280; }
 
 
-/* ============================================================
-   FORM INPUTS
-============================================================ */
-
 .form-control, .form-select {
     border: 1px solid #ddd2f7;
     border-radius: 9px;
@@ -2043,10 +2073,6 @@ h4, h5, h6 { color: var(--purple-950); }
 .form-label { color: #514365; font-weight: 600; font-size: 13.5px; }
 
 
-/* ============================================================
-   TEXT / BADGES
-============================================================ */
-
 .text-primary { color: var(--purple-600) !important; }
 .text-dark { color: var(--text) !important; }
 
@@ -2056,28 +2082,16 @@ h4, h5, h6 { color: var(--purple-950); }
 .badge.bg-success { background: var(--success) !important; }
 
 
-/* ============================================================
-   ROW STATES
-============================================================ */
-
 .expired-row { background: #fff1f2 !important; }
 .expiring-row { background: #fff7ed !important; }
 .low-row { background: #fffbeb !important; }
 
-
-/* ============================================================
-   ALERTS
-============================================================ */
 
 .alert { border-radius: 12px; }
 .alert-danger { color: #881337; background: #fff1f2; border-color: #fecdd3; }
 .alert-success { color: #166534; background: #f0fdf4; border-color: #bbf7d0; }
 .alert-primary { color: #4c1d95; background: var(--purple-100); border-color: var(--purple-200); }
 
-
-/* ============================================================
-   PROGRESS BAR
-============================================================ */
 
 .progress { background: var(--purple-100); border-radius: 20px; height: 20px; }
 .progress-bar {
@@ -2086,18 +2100,12 @@ h4, h5, h6 { color: var(--purple-950); }
 }
 
 
-/* ============================================================
-   MODAL
-============================================================ */
-
 .modal-content { border: 1px solid #e3d9fb; border-radius: var(--radius-lg); box-shadow: 0 15px 40px rgba(46, 16, 101, .20); }
 .modal-header { background: linear-gradient(135deg, var(--purple-900), var(--purple-600)); color: #fff; border-bottom: none; }
 .modal-header .modal-title { color: #fff; }
 .modal-header .btn-close { filter: invert(1); }
 .modal-footer { border-top: 1px solid #eee9f7; }
 
-
-/* LOW STOCK ALERT LIST (image-style rows) */
 
 .alert-list-item {
     display: flex;
@@ -2121,8 +2129,6 @@ h4, h5, h6 { color: var(--purple-950); }
     color: var(--danger);
 }
 
-
-/* DISPENSE LIST (cart-style list before confirming) */
 
 .dispense-list-item {
     display: flex;
@@ -2169,10 +2175,6 @@ a:hover { color: var(--purple-700); }
 ::-webkit-scrollbar-thumb { background: var(--purple-300); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--purple-500); }
 
-
-/* ============================================================
-   RESPONSIVE / MOBILE
-============================================================ */
 
 @media (max-width: 991.98px) {
 
@@ -2234,10 +2236,6 @@ a:hover { color: var(--purple-700); }
 
 <div class="row g-0">
 
-
-<!-- ==========================================================
-     SIDEBAR
-=========================================================== -->
 
 <div class="col-md-2 sidebar d-flex flex-column justify-content-between" id="sidebarPanel">
 
@@ -2303,16 +2301,8 @@ a:hover { color: var(--purple-700); }
 </div>
 
 
-<!-- ==========================================================
-     MAIN
-=========================================================== -->
-
 <div class="col-md-10">
 
-
-<!-- ==========================================================
-     TOP NAV
-=========================================================== -->
 
 <div class="top-navbar px-4 py-3 d-flex justify-content-between align-items-center">
 
@@ -2349,10 +2339,6 @@ a:hover { color: var(--purple-700); }
 
 </div>
 
-
-<!-- ========================================================
-     ACCOUNT SETTINGS MODAL
-========================================================= -->
 
 <div class="modal fade" id="accountModal" tabindex="-1">
 <div class="modal-dialog">
@@ -2408,10 +2394,6 @@ a:hover { color: var(--purple-700); }
 <div class="p-4">
 
 
-<!-- ========================================================
-     MESSAGE
-========================================================= -->
-
 <?php if (!empty($message)): ?>
 <div class="alert alert-<?php echo h($messageType); ?> alert-dismissible fade show">
 <?php echo h($message); ?>
@@ -2435,14 +2417,8 @@ connections to Supabase, and that SSL is enabled).
 <div class="tab-content">
 
 
-<!-- ========================================================
-     DASHBOARD
-========================================================= -->
-
 <div class="tab-pane fade <?php echo $activeTab === 'dashboard' ? 'show active' : ''; ?>" id="pane-dashboard">
 
-
-<!-- KPI ROW -->
 
 <div class="row g-3 mb-4">
 
@@ -2493,8 +2469,6 @@ connections to Supabase, and that SSL is enabled).
 </div>
 
 
-<!-- CHART ROW -->
-
 <div class="row g-3 mb-4">
 
 <div class="col-lg-5">
@@ -2527,12 +2501,8 @@ connections to Supabase, and that SSL is enabled).
 </div>
 
 
-<!-- EXPIRATION DASHBOARD -->
-
 <div class="row g-3 mb-4">
 
-
-<!-- EXPIRED -->
 
 <div class="col-lg-6">
 <div class="card-custom p-4 h-100">
@@ -2564,8 +2534,6 @@ connections to Supabase, and that SSL is enabled).
 </div>
 </div>
 
-
-<!-- EXPIRING -->
 
 <div class="col-lg-6">
 <div class="card-custom p-4 h-100">
@@ -2602,8 +2570,6 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 
 </div>
 
-
-<!-- LOW STOCK + RECENT DISPENSING -->
 
 <div class="row g-3 mb-4">
 
@@ -2668,10 +2634,6 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 </div>
 
 
-<!-- ========================================================
-     INVENTORY
-========================================================= -->
-
 <div class="tab-pane fade <?php echo $activeTab === 'products' ? 'show active' : ''; ?>" id="pane-products">
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -2684,8 +2646,6 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 </a>
 </div>
 
-
-<!-- ADD MEDICINE -->
 
 <div class="card-custom p-4 mb-4">
 <h5 class="mb-3">Register New Medicine</h5>
@@ -2757,8 +2717,6 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 </div>
 
 
-<!-- INVENTORY TABLE -->
-
 <div class="card-custom p-4">
 <div class="card-title-row">
 <h5>Complete Medicine List</h5>
@@ -2825,10 +2783,6 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 </div>
 </div>
 
-
-<!-- ========================================================
-     EDIT MODALS
-========================================================= -->
 
 <?php foreach ($medicineInventory as $key => $med): ?>
 
@@ -2920,10 +2874,6 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 </div>
 
 
-<!-- ========================================================
-     STOCK OUT
-========================================================= -->
-
 <div class="tab-pane fade <?php echo $activeTab === 'stockout' ? 'show active' : ''; ?>" id="pane-stockout">
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -2939,10 +2889,6 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 
 <div class="card-custom p-4 mb-4">
 <h5 class="mb-3"><i class="fa-solid fa-truck-ramp-box text-danger me-2"></i>Dispense Medicine</h5>
-
-<!-- STEP 1: pick a medicine + qty, add it to the list. Repeat for as many
-     medicines as needed. Works fine with just a single medicine too —
-     add it once, then confirm. -->
 
 <div class="row g-3 align-items-end mb-3">
 
@@ -2985,8 +2931,6 @@ $expired = $exp !== false && $exp <= $todayTimestamp;
 </div>
 
 
-<!-- STEP 2: the running list of medicines about to be dispensed -->
-
 <div class="mb-3">
 <label class="form-label mb-2">Medicines to Dispense (<span id="dispenseListCount">0</span>)</label>
 <div id="dispenseListWrap">
@@ -2997,8 +2941,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
 </div>
 </div>
 
-
-<!-- STEP 3: recipient + confirm the whole batch at once -->
 
 <form method="POST" id="dispenseForm">
 <input type="hidden" name="action" value="stock_out_batch">
@@ -3022,8 +2964,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
 
 </div>
 
-
-<!-- DISPENSING HISTORY -->
 
 <div class="card-custom p-4">
 <h5 class="mb-3">Dispensing History</h5>
@@ -3049,10 +2989,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
 </div>
 
 
-<!-- ========================================================
-     REPORTS
-========================================================= -->
-
 <div class="tab-pane fade" id="pane-reports">
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -3063,8 +2999,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
 <a href="?export=inventory" class="btn btn-success"><i class="fa-solid fa-file-excel me-1"></i>Inventory Excel</a>
 </div>
 
-
-<!-- REPORT KPI -->
 
 <div class="row g-3 mb-4">
 
@@ -3098,8 +3032,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
 
 </div>
 
-
-<!-- MONTHLY DISPENSING -->
 
 <div class="card-custom p-4 mb-4">
 
@@ -3149,8 +3081,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
 </div>
 
 
-<!-- MEDICINE SUMMARY -->
-
 <h6 class="fw-bold mt-4">Medicines Released This Month</h6>
 
 <?php if (empty($monthlyMedicineTotals)): ?>
@@ -3180,8 +3110,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
 <?php endif; ?>
 
 
-<!-- MONTHLY TRANSACTIONS -->
-
 <h6 class="fw-bold">Detailed Transactions</h6>
 
 <div class="table-responsive">
@@ -3207,10 +3135,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
 
 </div>
 
-
-<!-- ========================================================
-     EXPIRATION REPORT
-========================================================= -->
 
 <div class="card-custom p-4">
 
@@ -3283,16 +3207,8 @@ No medicines added yet. Select a medicine above and click "Add to List".
 </div>
 
 
-<!-- ==========================================================
-     BOOTSTRAP JAVASCRIPT
-=========================================================== -->
-
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-
-<!-- ==========================================================
-     MOBILE SIDEBAR TOGGLE
-=========================================================== -->
 
 <script>
 (function () {
@@ -3318,7 +3234,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
         overlay.addEventListener('click', closeSidebar);
     }
 
-    // Close the mobile sidebar automatically after picking a section
     var navButtons = document.querySelectorAll('#sidebarNav .nav-link');
     navButtons.forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -3328,7 +3243,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
         });
     });
 
-    // If the window is resized back to desktop size, make sure sidebar state resets
     window.addEventListener('resize', function () {
         if (window.innerWidth > 991) {
             closeSidebar();
@@ -3337,10 +3251,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
 })();
 </script>
 
-
-<!-- ==========================================================
-     CHOICES.JS INIT (Dispense Medicine: type OR select)
-=========================================================== -->
 
 <script src="https://cdn.jsdelivr.net/npm/choices.js@10.2.0/public/assets/scripts/choices.min.js"></script>
 <script>
@@ -3362,14 +3272,9 @@ No medicines added yet. Select a medicine above and click "Add to List".
 </script>
 
 
-<!-- ==========================================================
-     DISPENSE LIST (add multiple medicines, then confirm once)
-=========================================================== -->
-
 <script>
 (function () {
 
-    // key -> { name, batch, available }
     var medicineData = <?php echo json_encode(array_map(function ($m) {
         return [
             'name' => medicineFullName($m),
@@ -3450,15 +3355,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
         if (qtyEl) {
             qtyEl.max = available;
 
-            /*
-             * IMPORTANT:
-             * When a medicine is selected, automatically put
-             * the TOTAL CURRENT STOCK into the quantity field.
-             *
-             * Example:
-             * Inventory stock = 250
-             * Select medicine -> Quantity becomes 250
-             */
             if (available <= 0) {
                 qtyEl.value = 0;
                 qtyEl.disabled = true;
@@ -3612,10 +3508,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
 </script>
 
 
-<!-- ==========================================================
-     CHARTS
-=========================================================== -->
-
 <script>
 
 const purple500 = '#7c3aed';
@@ -3624,8 +3516,6 @@ const purple100 = '#f0eafd';
 
 Chart.defaults.font.family = "Plus Jakarta Sans, system-ui, sans-serif";
 Chart.defaults.color = '#8b81a3';
-
-/* DISPENSING TREND LINE CHART */
 
 new Chart(document.getElementById('trendChart'), {
     type: 'line',
@@ -3653,8 +3543,6 @@ new Chart(document.getElementById('trendChart'), {
 });
 
 
-/* CATEGORY DONUT CHART */
-
 new Chart(document.getElementById('categoryDonut'), {
     type: 'doughnut',
     data: {
@@ -3672,8 +3560,6 @@ new Chart(document.getElementById('categoryDonut'), {
     }
 });
 
-
-/* STOCK STATUS DONUT CHART */
 
 new Chart(document.getElementById('statusDonut'), {
     type: 'doughnut',
