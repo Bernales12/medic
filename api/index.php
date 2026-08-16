@@ -503,7 +503,7 @@ function insertDispenseLog($dateIso, $inventoryName, $batchNumber, $qtyOut, $rec
 
 function saveInventoryExcel($medicineInventory)
 {
-    $file = __DIR__ . '/inventory_report.xls';
+    $file = sys_get_temp_dir() . '/inventory_report.xls';
 
     $html = '
     <html>
@@ -571,7 +571,7 @@ function saveInventoryExcel($medicineInventory)
 
     $html .= '</table></body></html>';
 
-    file_put_contents($file, $html);
+    @file_put_contents($file, $html);
 }
 
 
@@ -581,7 +581,7 @@ function saveInventoryExcel($medicineInventory)
 
 function saveDispenseExcel($dispenseLogs)
 {
-    $file = __DIR__ . '/dispensing_report.xls';
+    $file = sys_get_temp_dir() . '/dispensing_report.xls';
 
     $html = '
     <html>
@@ -619,7 +619,7 @@ function saveDispenseExcel($dispenseLogs)
 
     $html .= '</table></body></html>';
 
-    file_put_contents($file, $html);
+    @file_put_contents($file, $html);
 }
 
 
