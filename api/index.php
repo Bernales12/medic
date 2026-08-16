@@ -13,6 +13,9 @@ session_start();
 | - Automatically zero expired medicine stock
 | - Expiration reports
 | - Dispensing / Stock-Out
+| - Delivery / Stock-In module
+| - Daily and monthly delivery reports
+| - Automatic stock addition on delivery
 | - Monthly dispensing report
 | - Excel-compatible inventory export
 | - Excel-compatible dispensing export
@@ -108,6 +111,24 @@ function ensureSchema()
             id SERIAL PRIMARY KEY,
             username VARCHAR(100) NOT NULL UNIQUE,
             password_hash VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    ");
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS delivery_logs (
+            id SERIAL PRIMARY KEY,
+            delivery_date DATE NOT NULL DEFAULT CURRENT_DATE,
+            medicine_sku VARCHAR(20) NOT NULL,
+            inventory_name VARCHAR(255) NOT NULL,
+            strength VARCHAR(50) NOT NULL DEFAULT '',
+            unit VARCHAR(20) NOT NULL DEFAULT '',
+            dosage_form VARCHAR(50) NOT NULL DEFAULT '',
+            generic_name VARCHAR(255) NOT NULL DEFAULT '',
+            category VARCHAR(100) NOT NULL DEFAULT '',
+            batch_number VARCHAR(100) NOT NULL DEFAULT '',
+            expiration_date DATE NULL,
+            quantity_delivered INT NOT NULL DEFAULT 0,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     ");
@@ -691,6 +712,38 @@ function insertDispenseLog($dateIso, $inventoryName, $batchNumber, $qtyOut, $rec
     $stmt->execute([$dateIso, $inventoryName, $batchNumber, $qtyOut, $recipient]);
 }
 
+function fetchAllDeliveryLogs()
+{
+    $rows = db()->query("SELECT * FROM delivery_logs ORDER BY delivery_date DESC, id DESC")->fetchAll();
+    $result = [];
+    foreach ($rows as $row) {
+        $result[] = [
+            'id' => intval($row['id']), 'date' => date('d M Y', strtotime($row['delivery_date'])),
+            'date_iso' => $row['delivery_date'], 'medicine_sku' => $row['medicine_sku'],
+            'inventory_name' => $row['inventory_name'], 'strength' => $row['strength'],
+            'unit' => $row['unit'], 'dosage_form' => $row['dosage_form'],
+            'generic_name' => $row['generic_name'], 'category' => $row['category'],
+            'batch_number' => $row['batch_number'], 'expiration_date' => $row['expiration_date'],
+            'quantity_delivered' => intval($row['quantity_delivered'])
+        ];
+    }
+    return $result;
+}
+
+function insertDeliveryLog($dateIso, $medicine, $quantity)
+{
+    $stmt = db()->prepare("
+        INSERT INTO delivery_logs
+        (delivery_date, medicine_sku, inventory_name, strength, unit, dosage_form, generic_name, category, batch_number, expiration_date, quantity_delivered)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->execute([
+        $dateIso, $medicine['sku'], $medicine['inventory_name'], $medicine['strength'],
+        $medicine['unit'], $medicine['dosage_form'], $medicine['generic_name'], $medicine['category'],
+        $medicine['batch_number'], $medicine['expiration_date'] ?: null, $quantity
+    ]);
+}
+
 
 /* ============================================================
    SAVE INVENTORY EXCEL
@@ -1067,12 +1120,14 @@ try {
 
     $dispenseInventory = array_values($dispenseGroups);
     $dispenseLogs = fetchAllDispenseLogs();
+    $deliveryLogs = fetchAllDeliveryLogs();
 
 } catch (PDOException $e) {
 
     $dbError = $e->getMessage();
     $medicineInventory = [];
     $dispenseLogs = [];
+    $deliveryLogs = [];
 }
 
 
@@ -1116,6 +1171,7 @@ $tabByAction = [
     'add_medicine' => 'products',
     'edit_medicine' => 'products',
     'delete_medicine' => 'products',
+    'receive_delivery' => 'delivery',
     'stock_out' => 'stockout',
     'stock_out_batch' => 'stockout'
 ];
@@ -1197,6 +1253,53 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
         /* ====================================================
            DELETE MEDICINE
         ==================================================== */
+
+        elseif ($action === 'receive_delivery') {
+
+            $sku = trim($_POST['delivery_sku'] ?? '');
+            $deliveryData = [
+                'inventory_name' => trim($_POST['inventory_name'] ?? ''),
+                'strength' => trim($_POST['strength'] ?? ''),
+                'unit' => trim($_POST['unit'] ?? ''),
+                'dosage_form' => trim($_POST['dosage_form'] ?? ''),
+                'generic_name' => trim($_POST['generic_name'] ?? ''),
+                'quantity' => max(0, intval($_POST['quantity'] ?? 0)),
+                'batch_number' => trim($_POST['batch_number'] ?? ''),
+                'expiration_date' => $_POST['expiration_date'] ?? '',
+                'category' => trim($_POST['category'] ?? ''),
+                'low_stock_threshold' => max(1, intval($_POST['low_stock_threshold'] ?? $DEFAULT_LOW_STOCK))
+            ];
+
+            if ($deliveryData['inventory_name'] === '') {
+                $message = "Medicine name is required."; $messageType = "danger";
+            } elseif ($deliveryData['quantity'] < 1) {
+                $message = "Delivery quantity must be at least 1."; $messageType = "danger";
+            } else {
+                $pdo = db(); $pdo->beginTransaction();
+                try {
+                    $medicine = $sku !== '' ? fetchMedicine($sku) : null;
+                    if ($medicine) {
+                        updateMedicine($sku, [
+                            'inventory_name' => $deliveryData['inventory_name'],
+                            'strength' => $deliveryData['strength'], 'unit' => $deliveryData['unit'],
+                            'dosage_form' => $deliveryData['dosage_form'], 'generic_name' => $deliveryData['generic_name'],
+                            'quantity' => intval($medicine['quantity']) + $deliveryData['quantity'],
+                            'batch_number' => $deliveryData['batch_number'], 'expiration_date' => $deliveryData['expiration_date'],
+                            'category' => $deliveryData['category'], 'low_stock_threshold' => $deliveryData['low_stock_threshold']
+                        ]);
+                        $medicine = fetchMedicine($sku);
+                    } else {
+                        $newSku = generateMedicineKey(); insertMedicine($newSku, $deliveryData); $medicine = fetchMedicine($newSku);
+                    }
+                    insertDeliveryLog(date('Y-m-d'), $medicine, $deliveryData['quantity']);
+                    $pdo->commit();
+                    $message = "Delivery recorded: +" . number_format($deliveryData['quantity']) . " unit(s) of " . medicineFullName($medicine) . " added to current stock.";
+                    $messageType = "success";
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack(); throw $e;
+                }
+            }
+        }
 
         elseif ($action === 'delete_medicine') {
 
@@ -1615,6 +1718,22 @@ foreach ($medicineInventory as $key => $med) {
     $categoryCounts[$category] += $quantity;
 }
 
+
+/* ============================================================
+   DELIVERY / STOCK-IN REPORT
+============================================================ */
+$todayDeliveryTotal = 0; $todayDeliveryByMedicine = [];
+$selectedDeliveryMonth = intval($_GET['delivery_month'] ?? date('m'));
+$selectedDeliveryYear = intval($_GET['delivery_year'] ?? date('Y'));
+$monthlyDeliveryTotal = 0; $monthlyDeliveryByMedicine = [];
+foreach ($deliveryLogs as $delivery) {
+    $iso = $delivery['date_iso'] ?? ''; $ts = $iso !== '' ? strtotime($iso) : false;
+    if ($ts === false) continue;
+    $qty = intval($delivery['quantity_delivered'] ?? 0); $name = $delivery['inventory_name'] ?? 'Unknown';
+    if (date('Y-m-d',$ts) === date('Y-m-d')) { $todayDeliveryTotal += $qty; $todayDeliveryByMedicine[$name] = ($todayDeliveryByMedicine[$name] ?? 0) + $qty; }
+    if (intval(date('m',$ts)) === $selectedDeliveryMonth && intval(date('Y',$ts)) === $selectedDeliveryYear) { $monthlyDeliveryTotal += $qty; $monthlyDeliveryByMedicine[$name] = ($monthlyDeliveryByMedicine[$name] ?? 0) + $qty; }
+}
+arsort($todayDeliveryByMedicine); arsort($monthlyDeliveryByMedicine);
 
 /* ============================================================
    MONTHLY DISPENSING REPORT
@@ -2462,6 +2581,11 @@ a:hover { color: var(--purple-700); }
 <i class="fa-solid fa-truck-ramp-box me-2"></i>Dispense / Stock-Out
 </button>
 </li>
+<li class="nav-item">
+<button class="nav-link <?php echo $activeTab === 'delivery' ? 'active' : ''; ?> w-100 text-start" data-bs-toggle="pill" data-bs-target="#pane-delivery">
+<i class="fa-solid fa-truck-fast me-2"></i>Delivery Stock
+</button>
+</li>
 
 <li class="nav-item">
 <button class="nav-link w-100 text-start" data-bs-toggle="pill" data-bs-target="#pane-reports">
@@ -3115,6 +3239,37 @@ if ($exp !== false && $exp <= $todayTimestamp) {
      STOCK OUT
 ========================================================= -->
 
+<div class="tab-pane fade <?php echo $activeTab === 'delivery' ? 'show active' : ''; ?>" id="pane-delivery">
+
+<div class="d-flex justify-content-between align-items-center mb-3"><div><h4>Delivery Stock</h4><small class="text-muted">Receive stock and automatically add the delivered quantity to current inventory.</small></div></div>
+
+<div class="card-custom p-4 mb-4">
+<h5 class="mb-3"><i class="fa-solid fa-truck-fast text-primary me-2"></i>Receive Delivery</h5>
+<form method="POST"><input type="hidden" name="action" value="receive_delivery">
+<div class="row g-3">
+<div class="col-md-4"><label class="form-label">Existing Inventory Product</label><select name="delivery_sku" id="deliverySku" class="form-select"><option value="">New inventory row</option><?php foreach ($medicineInventory as $med): ?><option value="<?php echo h($med['sku']); ?>" data-name="<?php echo h($med['inventory_name'] ?? ''); ?>" data-strength="<?php echo h($med['strength'] ?? ''); ?>" data-unit="<?php echo h($med['unit'] ?? ''); ?>" data-form="<?php echo h($med['dosage_form'] ?? ''); ?>" data-generic="<?php echo h($med['generic_name'] ?? ''); ?>" data-category="<?php echo h($med['category'] ?? ''); ?>" data-threshold="<?php echo getThreshold($med); ?>"><?php echo h(medicineFullName($med) . ' | Batch: ' . ($med['batch_number'] ?? '') . ' | Stock: ' . intval($med['quantity'] ?? 0)); ?></option><?php endforeach; ?></select><small class="text-muted">Select an existing row to add delivery quantity to its current stock.</small></div>
+<div class="col-md-4"><label class="form-label">Medicine Name</label><input type="text" name="inventory_name" id="deliveryName" class="form-control" required></div>
+<div class="col-md-2"><label class="form-label">Strength</label><input type="text" name="strength" id="deliveryStrength" class="form-control" required></div>
+<div class="col-md-2"><label class="form-label">Unit</label><select name="unit" id="deliveryUnit" class="form-select"><option>mg</option><option>ml</option><option>g</option><option>mcg</option><option>%</option></select></div>
+<div class="col-md-3"><label class="form-label">Dosage Form</label><input type="text" name="dosage_form" id="deliveryForm" class="form-control" required></div>
+<div class="col-md-3"><label class="form-label">Generic Name</label><input type="text" name="generic_name" id="deliveryGeneric" class="form-control" required></div>
+<div class="col-md-3"><label class="form-label">Category</label><input type="text" name="category" id="deliveryCategory" class="form-control" required></div>
+<div class="col-md-3"><label class="form-label">Delivery Quantity</label><input type="number" name="quantity" class="form-control" min="1" value="1" required></div>
+<div class="col-md-3"><label class="form-label">Batch Number</label><input type="text" name="batch_number" class="form-control" required></div>
+<div class="col-md-3"><label class="form-label">Expiration Date</label><input type="date" name="expiration_date" class="form-control" required></div>
+<div class="col-md-3"><label class="form-label">Low Stock Warning At</label><input type="number" name="low_stock_threshold" id="deliveryThreshold" class="form-control" min="1" value="200" required></div>
+<div class="col-12"><button class="btn btn-primary"><i class="fa-solid fa-plus me-1"></i>Receive Delivery &amp; Add to Stock</button></div>
+</div></form>
+</div>
+
+<div class="card-custom p-4 mb-4"><div class="card-title-row"><div><h5>Inventory Products</h5><small class="text-muted">Edit inventory directly from the Delivery Stock module.</small></div></div><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Current Stock</th><th>Action</th></tr></thead><tbody><?php foreach ($medicineInventory as $key => $med): ?><tr><td class="fw-bold"><?php echo h(medicineFullName($med)); ?></td><td><?php echo h($med['batch_number'] ?? ''); ?></td><td><?php echo h($med['expiration_date'] ?? ''); ?></td><td class="fw-bold"><?php echo intval($med['quantity'] ?? 0); ?></td><td><button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editModal<?php echo h($key); ?>"><i class="fa-solid fa-pen me-1"></i>Edit Inventory</button></td></tr><?php endforeach; ?></tbody></table></div></div>
+
+<div class="card-custom p-4 mb-4"><div class="card-title-row"><div><h5><i class="fa-solid fa-calendar-day text-success me-2"></i>Today's Delivery Report</h5><small class="text-muted"><?php echo date('F j, Y'); ?></small></div><span class="badge bg-success"><?php echo number_format($todayDeliveryTotal); ?> units delivered</span></div><?php if (empty($todayDeliveryByMedicine)): ?><div class="text-muted text-center py-4">No deliveries recorded today.</div><?php else: ?><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Quantity Delivered Today</th></tr></thead><tbody><?php foreach ($todayDeliveryByMedicine as $name => $qty): ?><tr><td class="fw-bold"><?php echo h($name); ?></td><td class="text-success fw-bold">+<?php echo number_format($qty); ?> units</td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?></div>
+
+<div class="card-custom p-4"><h5 class="mb-3">Delivery History</h5><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Quantity Delivered</th></tr></thead><tbody><?php if (empty($deliveryLogs)): ?><tr><td colspan="5" class="text-center text-muted">No delivery records yet.</td></tr><?php else: foreach ($deliveryLogs as $delivery): ?><tr><td><?php echo h($delivery['date']); ?></td><td class="fw-bold"><?php echo h(medicineFullName($delivery)); ?></td><td><?php echo h($delivery['batch_number']); ?></td><td><?php echo h($delivery['expiration_date']); ?></td><td class="text-success fw-bold">+<?php echo intval($delivery['quantity_delivered']); ?></td></tr><?php endforeach; endif; ?></tbody></table></div></div>
+
+</div>
+
 <div class="tab-pane fade <?php echo $activeTab === 'stockout' ? 'show active' : ''; ?>" id="pane-stockout">
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -3390,6 +3545,12 @@ No medicines added yet. Select a medicine above and click "Add to List".
      EXPIRATION REPORT
 ========================================================= -->
 
+<div class="card-custom p-4 mb-4"><div class="card-title-row"><div><h5><i class="fa-solid fa-truck-fast text-success me-2"></i>Delivery / Stock-In Report</h5><small class="text-muted">Quantity delivered for every medicine.</small></div><span class="badge bg-success"><?php echo number_format($monthlyDeliveryTotal); ?> units this month</span></div>
+<form method="GET" class="row g-2 mb-4"><div class="col-md-3"><label class="form-label">Month</label><select name="delivery_month" class="form-select"><?php for ($m = 1; $m <= 12; $m++): ?><option value="<?php echo $m; ?>" <?php echo $m == $selectedDeliveryMonth ? 'selected' : ''; ?>><?php echo date('F', mktime(0,0,0,$m,1)); ?></option><?php endfor; ?></select></div><div class="col-md-2"><label class="form-label">Year</label><select name="delivery_year" class="form-select"><?php for ($y = date('Y') - 3; $y <= date('Y') + 1; $y++): ?><option value="<?php echo $y; ?>" <?php echo $y == $selectedDeliveryYear ? 'selected' : ''; ?>><?php echo $y; ?></option><?php endfor; ?></select></div><div class="col-md-3 d-flex align-items-end"><button class="btn btn-success"><i class="fa-solid fa-filter me-1"></i>Show Delivery Report</button></div></form>
+<div class="alert alert-success"><strong><?php echo date('F Y', strtotime("$selectedDeliveryYear-$selectedDeliveryMonth-01")); ?></strong> &mdash; Total delivered: <strong><?php echo number_format($monthlyDeliveryTotal); ?> units</strong></div>
+<h6 class="fw-bold">Delivery Quantity by Medicine</h6><?php if (empty($monthlyDeliveryByMedicine)): ?><div class="text-muted text-center py-4">No deliveries recorded for this month.</div><?php else: ?><div class="table-responsive mb-4"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Total Delivered</th></tr></thead><tbody><?php foreach ($monthlyDeliveryByMedicine as $name => $qty): ?><tr><td class="fw-bold"><?php echo h($name); ?></td><td class="text-success fw-bold">+<?php echo number_format($qty); ?> units</td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?>
+<h6 class="fw-bold">Detailed Delivery Transactions</h6><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Quantity Delivered</th></tr></thead><tbody><?php $hasMonthlyDelivery=false; foreach ($deliveryLogs as $delivery): $ts=!empty($delivery['date_iso'])?strtotime($delivery['date_iso']):false; if($ts===false || intval(date('m',$ts))!==$selectedDeliveryMonth || intval(date('Y',$ts))!==$selectedDeliveryYear) continue; $hasMonthlyDelivery=true; ?><tr><td><?php echo h($delivery['date']); ?></td><td class="fw-bold"><?php echo h(medicineFullName($delivery)); ?></td><td><?php echo h($delivery['batch_number']); ?></td><td><?php echo h($delivery['expiration_date']); ?></td><td class="text-success fw-bold">+<?php echo intval($delivery['quantity_delivered']); ?></td></tr><?php endforeach; if(!$hasMonthlyDelivery): ?><tr><td colspan="5" class="text-center text-muted">No delivery transactions for this month.</td></tr><?php endif; ?></tbody></table></div></div>
+
 <div class="card-custom p-4">
 
 <div class="card-title-row">
@@ -3460,6 +3621,10 @@ No medicines added yet. Select a medicine above and click "Add to List".
 
 </div>
 
+
+<script>
+(function(){var s=document.getElementById('deliverySku');if(!s)return;s.addEventListener('change',function(){var o=s.options[s.selectedIndex];if(!o||!o.value)return;document.getElementById('deliveryName').value=o.dataset.name||'';document.getElementById('deliveryStrength').value=o.dataset.strength||'';document.getElementById('deliveryUnit').value=o.dataset.unit||'mg';document.getElementById('deliveryForm').value=o.dataset.form||'';document.getElementById('deliveryGeneric').value=o.dataset.generic||'';document.getElementById('deliveryCategory').value=o.dataset.category||'';document.getElementById('deliveryThreshold').value=o.dataset.threshold||'200';});})();
+</script>
 
 <!-- ==========================================================
      BOOTSTRAP JAVASCRIPT
