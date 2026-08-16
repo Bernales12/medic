@@ -1011,6 +1011,61 @@ try {
     processExpiredMedicinesDb();
 
     $medicineInventory = fetchAllMedicines();
+
+    /*
+     * DISPENSE ONLY:
+     * Inventory rows remain separate so the user can see every
+     * batch, expiration date, quantity and low-stock warning.
+     *
+     * In Dispense Medicine, rows are grouped by ONLY:
+     * medicine name + strength + unit + dosage form + generic name + category.
+     *
+     * Batch, expiration, quantity, low-stock warning and SKU do not affect
+     * the grouping. Expired rows are not counted as available stock.
+     */
+    $dispenseGroups = [];
+
+    foreach ($medicineInventory as $med) {
+        $groupKey = strtolower(implode('|', [
+            trim((string)($med['inventory_name'] ?? '')),
+            trim((string)($med['strength'] ?? '')),
+            trim((string)($med['unit'] ?? '')),
+            trim((string)($med['dosage_form'] ?? '')),
+            trim((string)($med['generic_name'] ?? '')),
+            trim((string)($med['category'] ?? ''))
+        ]));
+
+        $expiration = $med['expiration_date'] ?? '';
+        $expired = false;
+
+        if ($expiration !== '') {
+            $expirationTs = strtotime($expiration);
+            $expired = $expirationTs !== false && $expirationTs <= strtotime(date('Y-m-d'));
+        }
+
+        if (!isset($dispenseGroups[$groupKey])) {
+            $dispenseGroups[$groupKey] = [
+                'group_key' => $groupKey,
+                'inventory_name' => $med['inventory_name'] ?? '',
+                'strength' => $med['strength'] ?? '',
+                'unit' => $med['unit'] ?? '',
+                'dosage_form' => $med['dosage_form'] ?? '',
+                'generic_name' => $med['generic_name'] ?? '',
+                'category' => $med['category'] ?? '',
+                'quantity' => 0,
+                'rows' => 0
+            ];
+        }
+
+        $dispenseGroups[$groupKey]['rows']++;
+
+        // Do not count expired stock as available for dispensing.
+        if (!$expired) {
+            $dispenseGroups[$groupKey]['quantity'] += intval($med['quantity'] ?? 0);
+        }
+    }
+
+    $dispenseInventory = array_values($dispenseGroups);
     $dispenseLogs = fetchAllDispenseLogs();
 
 } catch (PDOException $e) {
@@ -1079,95 +1134,14 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
 
             if ($medicineData['inventory_name'] === '') {
-
                 $message = "Medicine name is required.";
                 $messageType = "danger";
-
             } else {
+                // IMPORTANT: every batch remains a separate inventory row.
+                insertMedicine(generateMedicineKey(), $medicineData);
 
-                $pdo = db();
-                $pdo->beginTransaction();
-
-                try {
-                    // Batch number and expiration date are intentionally ignored.
-                    // ALL matching rows are combined.
-                    $matches = findMatchingMedicines($medicineData);
-
-                    if (!empty($matches)) {
-
-                        $totalQuantity = intval($medicineData['quantity']);
-
-                        foreach ($matches as $row) {
-                            $totalQuantity += intval($row['quantity']);
-                        }
-
-                        $targetSku = $matches[0]['sku'];
-
-                        $stmt = $pdo->prepare("
-                            UPDATE medicines
-                            SET
-                                inventory_name = :inventory_name,
-                                strength = :strength,
-                                unit = :unit,
-                                dosage_form = :dosage_form,
-                                generic_name = :generic_name,
-                                quantity = :quantity,
-                                batch_number = :batch_number,
-                                expiration_date = :expiration_date,
-                                category = :category,
-                                low_stock_threshold = :low_stock_threshold
-                            WHERE sku = :sku
-                        ");
-
-                        $stmt->execute([
-                            'sku' => $targetSku,
-                            'inventory_name' => $medicineData['inventory_name'],
-                            'strength' => $medicineData['strength'],
-                            'unit' => $medicineData['unit'],
-                            'dosage_form' => $medicineData['dosage_form'],
-                            'generic_name' => $medicineData['generic_name'],
-                            'quantity' => $totalQuantity,
-                            'batch_number' => $medicineData['batch_number'],
-                            'expiration_date' => $medicineData['expiration_date'] ?: null,
-                            'category' => $medicineData['category'],
-                            'low_stock_threshold' => $medicineData['low_stock_threshold']
-                        ]);
-
-                        foreach ($matches as $row) {
-                            if ($row['sku'] !== $targetSku) {
-                                $delete = $pdo->prepare("DELETE FROM medicines WHERE sku = ?");
-                                $delete->execute([$row['sku']]);
-                            }
-                        }
-
-                        $pdo->commit();
-
-                        $message =
-                            "Medicine already exists. All matching stock was combined. " .
-                            "Total stock: " . number_format($totalQuantity) .
-                            ". Newest batch number and expiration date were kept.";
-
-                        $messageType = "success";
-
-                    } else {
-
-                        $autoSku = generateMedicineKey();
-                        insertMedicine($autoSku, $medicineData);
-
-                        $pdo->commit();
-
-                        $message = "Medicine successfully added to inventory.";
-                        $messageType = "success";
-                    }
-
-                } catch (Throwable $e) {
-
-                    if ($pdo->inTransaction()) {
-                        $pdo->rollBack();
-                    }
-
-                    throw $e;
-                }
+                $message = "Medicine successfully added to inventory.";
+                $messageType = "success";
             }
         }
 
@@ -1183,7 +1157,7 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($existing) {
 
-                $medicineData = [
+                updateMedicine($key, [
                     'inventory_name' => trim($_POST['inventory_name'] ?? ''),
                     'strength' => trim($_POST['strength'] ?? ''),
                     'unit' => trim($_POST['unit'] ?? ''),
@@ -1194,64 +1168,12 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     'expiration_date' => $_POST['expiration_date'] ?? '',
                     'category' => trim($_POST['category'] ?? ''),
                     'low_stock_threshold' => max(1, intval($_POST['low_stock_threshold'] ?? $DEFAULT_LOW_STOCK))
-                ];
+                ]);
 
-                $pdo = db();
-                $pdo->beginTransaction();
-
-                try {
-                    // Find OTHER rows with the same identifying information.
-                    // Batch and expiration are ignored.
-                    $matches = findMatchingMedicines($medicineData, $key);
-
-                    if (!empty($matches)) {
-
-                        // Edited quantity + every duplicate's quantity.
-                        $totalQuantity = intval($medicineData['quantity']);
-
-                        foreach ($matches as $row) {
-                            $totalQuantity += intval($row['quantity']);
-                        }
-
-                        $medicineData['quantity'] = $totalQuantity;
-
-                        updateMedicine($key, $medicineData);
-
-                        foreach ($matches as $row) {
-                            $delete = $pdo->prepare("DELETE FROM medicines WHERE sku = ?");
-                            $delete->execute([$row['sku']]);
-                        }
-
-                        $pdo->commit();
-
-                        $message =
-                            "Medicine updated and combined. Total stock: " .
-                            number_format($totalQuantity) .
-                            ". Newest batch number and expiration date were kept.";
-
-                        $messageType = "success";
-
-                    } else {
-
-                        updateMedicine($key, $medicineData);
-
-                        $pdo->commit();
-
-                        $message = "Medicine information successfully updated.";
-                        $messageType = "success";
-                    }
-
-                } catch (Throwable $e) {
-
-                    if ($pdo->inTransaction()) {
-                        $pdo->rollBack();
-                    }
-
-                    throw $e;
-                }
+                $message = "Medicine information successfully updated.";
+                $messageType = "success";
 
             } else {
-
                 $message = "Medicine could not be found.";
                 $messageType = "danger";
             }
@@ -1389,55 +1311,115 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     foreach ($items as $item) {
 
-                        $key = trim((string)($item['medicine_key'] ?? ''));
+                        $groupKey = trim((string)($item['medicine_key'] ?? ''));
                         $qtyOut = intval($item['qty_out'] ?? 0);
 
-                        $medItem = $key !== '' ? fetchMedicine($key) : null;
-
-                        if (!$medItem) {
-                            $errors[] = "A selected medicine could not be found in inventory.";
+                        if ($groupKey === '' || $qtyOut < 1) {
+                            $errors[] = "Invalid medicine or quantity.";
                             continue;
                         }
 
-                        $medName = medicineFullName($medItem);
+                        // Get all inventory rows and find the same medicine identity.
+                        $allRows = fetchAllMedicines();
+                        $matches = [];
 
-                        if ($qtyOut < 1) {
-                            $errors[] = "$medName: quantity must be at least 1.";
-                            continue;
-                        }
+                        foreach ($allRows as $row) {
 
-                        $expiration = $medItem['expiration_date'] ?? '';
-                        $today = strtotime(date('Y-m-d'));
-                        $isExpired = false;
+                            $rowGroupKey = strtolower(implode('|', [
+                                trim((string)($row['inventory_name'] ?? '')),
+                                trim((string)($row['strength'] ?? '')),
+                                trim((string)($row['unit'] ?? '')),
+                                trim((string)($row['dosage_form'] ?? '')),
+                                trim((string)($row['generic_name'] ?? '')),
+                                trim((string)($row['category'] ?? ''))
+                            ]));
 
-                        if (!empty($expiration)) {
+                            if ($rowGroupKey !== $groupKey) {
+                                continue;
+                            }
 
-                            $expirationTimestamp = strtotime($expiration);
+                            $expiration = $row['expiration_date'] ?? '';
+                            $expired = false;
 
-                            if ($expirationTimestamp !== false && $expirationTimestamp <= $today) {
-                                $isExpired = true;
+                            if ($expiration !== '') {
+                                $expirationTs = strtotime($expiration);
+                                $expired = $expirationTs !== false && $expirationTs <= strtotime(date('Y-m-d'));
+                            }
+
+                            // Expired inventory stays visible but cannot be dispensed.
+                            if (!$expired && intval($row['quantity']) > 0) {
+                                $matches[] = $row;
                             }
                         }
 
-                        if ($isExpired) {
-                            $errors[] = "$medName has already expired and cannot be dispensed.";
+                        if (!$matches) {
+                            $errors[] = "No available unexpired stock was found for the selected medicine.";
                             continue;
                         }
 
-                        if (intval($medItem['quantity']) < $qtyOut) {
-                            $errors[] = "$medName: not enough stock (available " . intval($medItem['quantity']) . ", requested $qtyOut).";
+                        $totalAvailable = 0;
+                        foreach ($matches as $row) {
+                            $totalAvailable += intval($row['quantity']);
+                        }
+
+                        if ($qtyOut > $totalAvailable) {
+                            $errors[] =
+                                medicineFullName($matches[0]) .
+                                ": not enough stock (available " .
+                                $totalAvailable .
+                                ", requested " .
+                                $qtyOut .
+                                ").";
                             continue;
                         }
 
-                        decrementMedicineStock($key, $qtyOut);
+                        /*
+                         * FEFO:
+                         * consume the earliest-expiring batch first,
+                         * while keeping all inventory rows separate.
+                         */
+                        usort($matches, function ($a, $b) {
+                            return strcmp(
+                                $a['expiration_date'] ?: '9999-12-31',
+                                $b['expiration_date'] ?: '9999-12-31'
+                            );
+                        });
 
-                        $updatedMed = fetchMedicine($key);
-                        $fullName = medicineFullName($updatedMed);
-                        $dateIso = date('Y-m-d');
+                        $remaining = $qtyOut;
 
-                        insertDispenseLog($dateIso, $fullName, $updatedMed['batch_number'] ?? '', $qtyOut, $recipient);
+                        foreach ($matches as $row) {
 
-                        $dispensedSummaries[] = $qtyOut . ' unit(s) of ' . $fullName;
+                            if ($remaining <= 0) {
+                                break;
+                            }
+
+                            $locked = fetchMedicine($row['sku']);
+
+                            if (!$locked || intval($locked['quantity']) <= 0) {
+                                continue;
+                            }
+
+                            $take = min($remaining, intval($locked['quantity']));
+
+                            decrementMedicineStock($locked['sku'], $take);
+
+                            insertDispenseLog(
+                                date('Y-m-d'),
+                                medicineFullName($locked),
+                                $locked['batch_number'] ?? '',
+                                $take,
+                                $recipient
+                            );
+
+                            $remaining -= $take;
+                        }
+
+                        if ($remaining > 0) {
+                            $errors[] = "Dispensing could not be completed for " . medicineFullName($matches[0]) . ".";
+                        } else {
+                            $dispensedSummaries[] =
+                                $qtyOut . ' unit(s) of ' . medicineFullName($matches[0]);
+                        }
                     }
 
                     if (!empty($errors)) {
@@ -1451,11 +1433,17 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         $pdo->commit();
 
-                        $message = "Successfully dispensed to " . $recipient . ": " . implode(', ', $dispensedSummaries) . ".";
+                        $message =
+                            "Successfully dispensed to " .
+                            $recipient .
+                            ": " .
+                            implode(', ', $dispensedSummaries) .
+                            ".";
+
                         $messageType = "success";
                     }
 
-                } catch (Exception $e) {
+                } catch (Throwable $e) {
 
                     if ($pdo->inTransaction()) {
                         $pdo->rollBack();
@@ -3125,13 +3113,9 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 <label class="form-label">Select Medicine</label>
 <select id="medicineSelect" class="form-select">
 <option value="">Type or select a medicine...</option>
-<?php foreach ($medicineInventory as $key => $med): ?>
-<?php
-$exp = !empty($med['expiration_date']) ? strtotime($med['expiration_date']) : false;
-$expired = $exp !== false && $exp <= $todayTimestamp;
-?>
-<option value="<?php echo h($key); ?>" <?php echo $expired ? 'disabled' : ''; ?>>
-<?php echo h(medicineFullName($med) . ' | Stock: ' . intval($med['quantity'] ?? 0) . ' | Batch: ' . ($med['batch_number'] ?? '') . ($expired ? ' | EXPIRED' : '')); ?>
+<?php foreach ($dispenseInventory as $med): ?>
+<option value="<?php echo h($med['group_key']); ?>" <?php echo intval($med['quantity']) <= 0 ? 'disabled' : ''; ?>>
+<?php echo h(medicineFullName($med) . ' | Total Stock: ' . intval($med['quantity'])); ?>
 </option>
 <?php endforeach; ?>
 </select>
@@ -3536,13 +3520,14 @@ No medicines added yet. Select a medicine above and click "Add to List".
 (function () {
 
     // key -> { name, batch, available }
-    var medicineData = <?php echo json_encode(array_map(function ($m) {
-        return [
-            'name' => medicineFullName($m),
-            'batch' => $m['batch_number'] ?? '',
-            'available' => intval($m['quantity'] ?? 0)
-        ];
-    }, $medicineInventory)); ?>;
+    var medicineData = <?php echo json_encode(array_reduce($dispenseInventory, function ($carry, $m) {
+    $carry[$m['group_key']] = [
+        'name' => medicineFullName($m),
+        'batch' => '',
+        'available' => intval($m['quantity'] ?? 0)
+    ];
+    return $carry;
+}, [])); ?>;
 
     var dispenseList = [];
 
@@ -3556,6 +3541,21 @@ No medicines added yet. Select a medicine above and click "Add to List".
     var confirmBtn = document.getElementById('confirmDispenseBtn');
     var dispenseForm = document.getElementById('dispenseForm');
 
+    function updateQuantityForSelection() {
+        var key = selectEl.value;
+        var info = medicineData[key];
+
+        if (info && info.available > 0) {
+            qtyEl.value = info.available;
+            qtyEl.max = info.available;
+            qtyEl.disabled = false;
+        } else {
+            qtyEl.value = 1;
+            qtyEl.removeAttribute('max');
+            qtyEl.disabled = false;
+        }
+    }
+
     function resetSelection() {
         if (selectEl.choicesInstance) {
             selectEl.choicesInstance.setChoiceByValue('');
@@ -3563,7 +3563,11 @@ No medicines added yet. Select a medicine above and click "Add to List".
             selectEl.value = '';
         }
         qtyEl.value = 1;
+        qtyEl.removeAttribute('max');
+        qtyEl.disabled = false;
     }
+
+    selectEl.addEventListener('change', updateQuantityForSelection);
 
     function renderList() {
 
