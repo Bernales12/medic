@@ -3450,12 +3450,21 @@ No medicines added yet. Select a medicine above and click "Add to List".
         if (qtyEl) {
             qtyEl.max = available;
 
-            var currentQty = parseInt(qtyEl.value, 10) || 1;
-
+            /*
+             * IMPORTANT:
+             * When a medicine is selected, automatically put
+             * the TOTAL CURRENT STOCK into the quantity field.
+             *
+             * Example:
+             * Inventory stock = 250
+             * Select medicine -> Quantity becomes 250
+             */
             if (available <= 0) {
                 qtyEl.value = 0;
-            } else if (currentQty > available) {
+                qtyEl.disabled = true;
+            } else {
                 qtyEl.value = available;
+                qtyEl.disabled = false;
             }
         }
     }
@@ -3469,6 +3478,7 @@ No medicines added yet. Select a medicine above and click "Add to List".
 
         qtyEl.value = 1;
         qtyEl.removeAttribute('max');
+        qtyEl.disabled = false;
 
         if (selectedStockInfo) {
             selectedStockInfo.style.display = 'none';
