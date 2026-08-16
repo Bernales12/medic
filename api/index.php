@@ -1292,6 +1292,25 @@ if (empty($dbError) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
 
         /* ====================================================
+           CLEAR DELIVERY HISTORY — PASSWORD PROTECTED
+        ==================================================== */
+        if ($action === 'clear_delivery_history') {
+            $clearPassword = $_POST['clear_password'] ?? '';
+            $currentUser = findUserById($_SESSION['user_id'] ?? 0);
+
+            if (!$currentUser || !password_verify($clearPassword, $currentUser['password_hash'])) {
+                $message = "Incorrect password. Delivery history was not cleared.";
+                $messageType = "danger";
+            } else {
+                db()->exec("DELETE FROM delivery_logs");
+                $message = "Delivery history cleared successfully.";
+                $messageType = "success";
+            }
+        }
+
+
+
+        /* ====================================================
            ADD MEDICINE
         ==================================================== */
 
@@ -2702,6 +2721,33 @@ a:hover { color: var(--purple-700); }
 
 </style>
 
+
+<style id="pharmacy-enhancements">
+.btn-enhanced{border-radius:10px!important;font-weight:700!important;padding:9px 15px!important;transition:transform .18s ease,box-shadow .18s ease,filter .18s ease!important}
+.btn-enhanced:hover{transform:translateY(-1px);box-shadow:0 7px 18px rgba(0,0,0,.14);filter:brightness(1.03)}
+.delivery-history-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.theme-toggle-btn{border:1px solid var(--enh-border,#e5e7eb)!important;background:var(--enh-card,#fff)!important;color:var(--enh-purple,#6d28d9)!important;border-radius:10px!important;font-weight:700!important;padding:8px 12px!important;box-shadow:0 2px 7px rgba(0,0,0,.05);margin:8px 12px}
+.theme-toggle-btn:hover{box-shadow:0 6px 16px rgba(0,0,0,.10)}
+.enhanced-modal{border:0!important;border-radius:18px!important;overflow:hidden;background:var(--enh-card,#fff);color:var(--enh-text,#241b35);box-shadow:0 24px 70px rgba(0,0,0,.25)}
+.enhanced-modal .modal-header{border-bottom:1px solid var(--enh-border,#e5e7eb);padding:18px 20px}
+.enhanced-modal .modal-footer{border-top:1px solid var(--enh-border,#e5e7eb)}
+.security-warning{display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.18);color:#991b1b}
+.security-warning>i{font-size:20px;margin-top:2px}
+.password-toggle-wrap{position:relative}
+.password-toggle-wrap .form-control{padding-right:48px}
+.password-toggle-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:transparent;padding:8px;color:#7b728a;cursor:pointer}
+:root[data-theme="dark"]{--enh-bg:#100b1b;--enh-card:#1b1428;--enh-border:#382b49;--enh-text:#f3eff9;--enh-muted:#b7adc8;--enh-purple:#c4a8ff}
+:root[data-theme="dark"] body{background:var(--enh-bg)!important;color:var(--enh-text)!important}
+:root[data-theme="dark"] .top-navbar,:root[data-theme="dark"] .card-custom,:root[data-theme="dark"] .enhanced-modal,:root[data-theme="dark"] .theme-toggle-btn{background:var(--enh-card)!important;color:var(--enh-text)!important;border-color:var(--enh-border)!important}
+:root[data-theme="dark"] .table{--bs-table-bg:var(--enh-card);--bs-table-color:var(--enh-text);--bs-table-border-color:var(--enh-border)}
+:root[data-theme="dark"] .form-control,:root[data-theme="dark"] .form-select{background:#241b34!important;color:#f5f1fb!important;border-color:#443653!important}
+:root[data-theme="dark"] .form-control::placeholder{color:#9f93b0!important}
+:root[data-theme="dark"] .text-muted{color:var(--enh-muted)!important}
+:root[data-theme="dark"] .btn-light{background:#2a2038!important;color:#f5f1fb!important;border-color:#443653!important}
+:root[data-theme="dark"] .security-warning{color:#fecaca;background:rgba(220,38,38,.12)}
+.floating-theme-toggle{position:fixed;right:18px;bottom:18px;z-index:1100}
+</style>
+
 </head>
 
 
@@ -2799,6 +2845,10 @@ a:hover { color: var(--purple-700); }
 =========================================================== -->
 
 <div class="top-navbar px-4 py-3 d-flex justify-content-between align-items-center">
+<button type="button" class="btn theme-toggle-btn" data-theme-toggle>
+<i class="fa-solid fa-moon"></i><span class="theme-label">Dark Mode</span>
+</button>
+
 
 <div class="d-flex align-items-center">
 <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">
@@ -3451,7 +3501,18 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 <div class="card-custom p-4 mb-4"><div class="card-title-row"><div><h5><i class="fa-solid fa-calendar-day text-success me-2"></i>Today's Delivery Report</h5><small class="text-muted"><?php echo date('F j, Y'); ?></small></div><span class="badge bg-success"><?php echo number_format($todayDeliveryTotal); ?> units delivered</span></div><?php if (empty($todayDeliveryByMedicine)): ?><div class="text-muted text-center py-4">No deliveries recorded today.</div><?php else: ?><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Quantity Delivered Today</th></tr></thead><tbody><?php foreach ($todayDeliveryByMedicine as $name => $qty): ?><tr><td class="fw-bold"><?php echo h($name); ?></td><td class="text-success fw-bold">+<?php echo number_format($qty); ?> units</td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?></div>
 
 <div class="card-custom p-4">
-<div class="card-title-row"><div><h5 class="mb-1">Delivery History</h5><small class="text-muted">View delivery records by selected month and year.</small></div><span class="badge bg-success"><?php echo date('F Y', strtotime("$selectedDeliveryYear-$selectedDeliveryMonth-01")); ?></span></div>
+<div class="card-title-row">
+<div>
+<h5 class="mb-1">Delivery History</h5>
+<small class="text-muted">View delivery records by selected month and year.</small>
+</div>
+<div class="delivery-history-actions">
+<button type="button" class="btn btn-danger btn-enhanced" id="clearDeliveryHistoryBtn">
+<i class="fa-solid fa-trash-can me-1"></i>Clear History
+</button>
+<span class="badge bg-success"><?php echo date('F Y', strtotime("$selectedDeliveryYear-$selectedDeliveryMonth-01")); ?></span>
+</div>
+</div>
 <form method="GET" class="row g-2 mb-4">
 <div class="col-md-3"><label class="form-label">Month</label><select name="delivery_month" class="form-select"><?php for ($m = 1; $m <= 12; $m++): ?><option value="<?php echo $m; ?>" <?php echo $m == $selectedDeliveryMonth ? 'selected' : ''; ?>><?php echo date('F', mktime(0,0,0,$m,1)); ?></option><?php endfor; ?></select></div>
 <div class="col-md-2"><label class="form-label">Year</label><select name="delivery_year" class="form-select"><?php for ($y = date('Y') - 3; $y <= date('Y') + 1; $y++): ?><option value="<?php echo $y; ?>" <?php echo $y == $selectedDeliveryYear ? 'selected' : ''; ?>><?php echo $y; ?></option><?php endfor; ?></select></div>
@@ -4293,6 +4354,99 @@ document.addEventListener('DOMContentLoaded', function () {
     setupLimitedTable(document.getElementById('deliveryHistoryList'));
 });
 </script>
+
+<!-- PASSWORD-PROTECTED CLEAR DELIVERY HISTORY -->
+<div class="modal fade" id="clearHistoryModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content enhanced-modal">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title"><i class="fa-solid fa-shield-halved me-2"></i>Clear Delivery History</h5>
+          <small class="text-muted">Password confirmation required</small>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="clearHistoryForm">
+        <input type="hidden" name="action" value="clear_delivery_history">
+        <div class="modal-body">
+          <div class="security-warning">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <div>
+              <strong>This action cannot be undone.</strong>
+              <div>All delivery history records will be permanently deleted.</div>
+            </div>
+          </div>
+          <label class="form-label fw-semibold mt-3">Your Password</label>
+          <div class="password-toggle-wrap">
+            <input type="password" name="clear_password" id="clearHistoryPassword"
+                   class="form-control" required autocomplete="current-password"
+                   placeholder="Enter your account password">
+            <button type="button" class="password-toggle-btn" id="toggleClearHistoryPassword">
+              <i class="fa-solid fa-eye"></i>
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light btn-enhanced" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger btn-enhanced">
+            <i class="fa-solid fa-trash-can me-1"></i>Clear All History
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const root = document.documentElement;
+
+    function applyTheme(theme) {
+        root.setAttribute('data-theme', theme);
+        localStorage.setItem('pharmacy-theme', theme);
+        document.querySelectorAll('[data-theme-toggle]').forEach(function(btn) {
+            const icon = btn.querySelector('i');
+            const label = btn.querySelector('.theme-label');
+            if (icon) icon.className = theme === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+            if (label) label.textContent = theme === 'dark' ? 'Light Mode' : 'Dark Mode';
+        });
+    }
+
+    applyTheme(localStorage.getItem('pharmacy-theme') || 'light');
+
+    document.querySelectorAll('[data-theme-toggle]').forEach(function(btn) {
+        btn.addEventListener('click', function () {
+            applyTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+        });
+    });
+
+    const clearBtn = document.getElementById('clearDeliveryHistoryBtn');
+    const modalEl = document.getElementById('clearHistoryModal');
+    const password = document.getElementById('clearHistoryPassword');
+    const toggle = document.getElementById('toggleClearHistoryPassword');
+
+    if (clearBtn && modalEl && window.bootstrap) {
+        clearBtn.addEventListener('click', function () {
+            if (password) {
+                password.value = '';
+                password.type = 'password';
+            }
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        });
+    }
+
+    if (toggle && password) {
+        toggle.addEventListener('click', function () {
+            const show = password.type === 'password';
+            password.type = show ? 'text' : 'password';
+            toggle.innerHTML = show
+                ? '<i class="fa-solid fa-eye-slash"></i>'
+                : '<i class="fa-solid fa-eye"></i>';
+        });
+    }
+});
+</script>
+
 </body>
 
 </html>
