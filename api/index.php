@@ -66,13 +66,15 @@ function db()
 /* ============================================================
    SCHEMA BOOTSTRAP
    Creates the tables (if missing) and seeds starter data
-   (if the medicines table is empty) so the app works the
-   moment the database itself exists.
+   ONLY ONCE — the very first time the app runs against a
+   brand new database. A dedicated app_settings flag tracks
+   whether seeding has already happened, so deleting every
+   medicine afterwards does NOT bring the starter data back.
 
    NOTE: You can also run supabase_schema.sql once in the
    Supabase SQL editor instead of relying on this. Either
    path is safe — this function only creates tables that
-   don't already exist and only seeds empty tables.
+   don't already exist and only seeds once, ever.
 ============================================================ */
 
 function ensureSchema()
@@ -135,6 +137,19 @@ function ensureSchema()
         )
     ");
 
+    // ------------------------------------------------------------------
+    // Settings table: used as a one-time "have we seeded before?" flag.
+    // This is what actually fixes the "deleted items keep coming back"
+    // bug — seeding used to be triggered by "medicines table is empty",
+    // which becomes true again the moment you delete every medicine.
+    // ------------------------------------------------------------------
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key_name VARCHAR(50) PRIMARY KEY,
+            value VARCHAR(255) NOT NULL DEFAULT ''
+        )
+    ");
+
     $userCount = $pdo->query("SELECT COUNT(*) AS c FROM users")->fetch()['c'];
 
     if (intval($userCount) === 0) {
@@ -145,9 +160,11 @@ function ensureSchema()
         ")->execute(['admin', password_hash('admin123', PASSWORD_DEFAULT)]);
     }
 
-    $count = $pdo->query("SELECT COUNT(*) AS c FROM medicines")->fetch()['c'];
+    $seededFlag = $pdo->query("
+        SELECT value FROM app_settings WHERE key_name = 'medicines_seeded'
+    ")->fetch();
 
-    if (intval($count) === 0) {
+    if (!$seededFlag) {
 
         $seedMedicines = [
             ['M001', 'Paracetamol', '500', 'mg', 'Tablet', 'Paracetamol (Acetaminophen)', 150, 'BCH-2026-01A', '2028-05-15', 'Analgesics', 200],
@@ -159,6 +176,7 @@ function ensureSchema()
             INSERT INTO medicines
                 (sku, inventory_name, strength, unit, dosage_form, generic_name, quantity, batch_number, expiration_date, category, low_stock_threshold)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (sku) DO NOTHING
         ");
 
         foreach ($seedMedicines as $row) {
@@ -169,6 +187,15 @@ function ensureSchema()
             INSERT INTO dispense_logs (dispense_date, inventory_name, batch_number, qty_out, recipient)
             VALUES (?, ?, ?, ?, ?)
         ")->execute(['2026-05-20', 'Paracetamol 500 mg Tablet', 'BCH-2026-01A', 10, 'John Doe']);
+
+        // Mark seeding as done FOREVER — even if every medicine
+        // is later deleted, this flag will still exist and
+        // prevent the starter data from being re-inserted.
+        $pdo->prepare("
+            INSERT INTO app_settings (key_name, value)
+            VALUES ('medicines_seeded', '1')
+            ON CONFLICT (key_name) DO NOTHING
+        ")->execute();
     }
 }
 
@@ -3897,8 +3924,6 @@ No medicines added yet. Select a medicine above and click "Add to List".
 </table>
 </div>
 <?php endif; ?>
-
-</div>
 
 </div>
 
