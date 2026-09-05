@@ -3282,9 +3282,13 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 
 <div class="col-md-2">
 <label class="form-label">Unit</label>
-<select name="unit" class="form-select">
+<div class="unit-select-wrap">
+<select name="unit" class="form-select unit-select">
 <option>mg</option><option>ml</option><option>g</option><option>mcg</option><option>%</option>
+<option value="__add_new__">+ Add new unit</option>
 </select>
+<input type="text" class="form-control unit-custom-input mt-1 d-none" placeholder="Type unit, press Enter">
+</div>
 </div>
 
 <div class="col-md-2">
@@ -3440,11 +3444,21 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 
 <div class="col-md-2">
 <label class="form-label">Unit</label>
-<select name="unit" class="form-select">
-<?php $units = ['mg','ml','g','mcg','%']; foreach ($units as $unit): ?>
-<option value="<?php echo h($unit); ?>" <?php echo (($med['unit'] ?? '') === $unit) ? 'selected' : ''; ?>><?php echo h($unit); ?></option>
+<div class="unit-select-wrap">
+<select name="unit" class="form-select unit-select">
+<?php
+$units = ['mg','ml','g','mcg','%'];
+$currentUnit = trim($med['unit'] ?? '');
+if ($currentUnit !== '' && !in_array($currentUnit, $units, true)) {
+    $units[] = $currentUnit;
+}
+foreach ($units as $unit): ?>
+<option value="<?php echo h($unit); ?>" <?php echo ($currentUnit === $unit) ? 'selected' : ''; ?>><?php echo h($unit); ?></option>
 <?php endforeach; ?>
+<option value="__add_new__">+ Add new unit</option>
 </select>
+<input type="text" class="form-control unit-custom-input mt-1 d-none" placeholder="Type unit, press Enter">
+</div>
 </div>
 
 <div class="col-md-4">
@@ -3520,7 +3534,7 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 <div class="col-md-4"><label class="form-label">Existing Inventory Product</label><select name="delivery_sku" id="deliverySku" class="form-select"><option value="">New inventory row</option><?php foreach ($medicineInventory as $med): ?><option value="<?php echo h($med['sku']); ?>" data-name="<?php echo h($med['inventory_name'] ?? ''); ?>" data-strength="<?php echo h($med['strength'] ?? ''); ?>" data-unit="<?php echo h($med['unit'] ?? ''); ?>" data-form="<?php echo h($med['dosage_form'] ?? ''); ?>" data-generic="<?php echo h($med['generic_name'] ?? ''); ?>" data-category="<?php echo h($med['category'] ?? ''); ?>" data-threshold="<?php echo getThreshold($med); ?>"><?php echo h(medicineFullName($med) . ' | Batch: ' . ($med['batch_number'] ?? '') . ' | Stock: ' . intval($med['quantity'] ?? 0)); ?></option><?php endforeach; ?></select><small class="text-muted">Select an existing row to add delivery quantity to its current stock.</small></div>
 <div class="col-md-4"><label class="form-label">Medicine Name</label><input type="text" name="inventory_name" id="deliveryName" class="form-control" required></div>
 <div class="col-md-2"><label class="form-label">Strength</label><input type="text" name="strength" id="deliveryStrength" class="form-control" required></div>
-<div class="col-md-2"><label class="form-label">Unit</label><select name="unit" id="deliveryUnit" class="form-select"><option>mg</option><option>ml</option><option>g</option><option>mcg</option><option>%</option></select></div>
+<div class="col-md-2"><label class="form-label">Unit</label><div class="unit-select-wrap"><select name="unit" id="deliveryUnit" class="form-select unit-select"><option>mg</option><option>ml</option><option>g</option><option>mcg</option><option>%</option><option value="__add_new__">+ Add new unit</option></select><input type="text" class="form-control unit-custom-input mt-1 d-none" placeholder="Type unit, press Enter"></div></div>
 <div class="col-md-3"><label class="form-label">Dosage Form</label><input type="text" name="dosage_form" id="deliveryForm" class="form-control" required></div>
 <div class="col-md-3"><label class="form-label">Generic Name</label><input type="text" name="generic_name" id="deliveryGeneric" class="form-control" required></div>
 <div class="col-md-3"><label class="form-label">Category</label><input type="text" name="category" id="deliveryCategory" class="form-control" required></div>
@@ -3932,7 +3946,15 @@ No medicines added yet. Select a medicine above and click "Add to List".
             if(!o||!o.value)return;
             document.getElementById('deliveryName').value=o.dataset.name||'';
             document.getElementById('deliveryStrength').value=o.dataset.strength||'';
-            document.getElementById('deliveryUnit').value=o.dataset.unit||'mg';
+            var unitSel=document.getElementById('deliveryUnit');
+            var unitVal=o.dataset.unit||'mg';
+            var hasOpt=Array.prototype.some.call(unitSel.options,function(opt){return opt.value===unitVal;});
+            if(!hasOpt && unitVal){
+                var newOpt=document.createElement('option');
+                newOpt.value=unitVal; newOpt.textContent=unitVal;
+                unitSel.insertBefore(newOpt, unitSel.querySelector('option[value="__add_new__"]'));
+            }
+            unitSel.value=unitVal;
             document.getElementById('deliveryForm').value=o.dataset.form||'';
             document.getElementById('deliveryGeneric').value=o.dataset.generic||'';
             document.getElementById('deliveryCategory').value=o.dataset.category||'';
@@ -4397,6 +4419,67 @@ document.addEventListener('DOMContentLoaded', function () {
     setupLimitedTable(document.getElementById('deliveryInventoryList'));
     setupLimitedTable(document.getElementById('deliveryHistoryList'));
     setupLimitedTable(document.getElementById('lowStockAlertsList'));
+});
+</script>
+
+<script>
+/* ============================================================
+   UNIT SELECT — "+ Add new unit" custom option
+   Lets the user type a unit that isn't in the dropdown yet;
+   it gets inserted as a real option and selected.
+============================================================ */
+document.addEventListener('DOMContentLoaded', function () {
+
+    function commitCustomUnit(input) {
+        var wrap = input.closest('.unit-select-wrap');
+        if (!wrap) return;
+        var select = wrap.querySelector('.unit-select');
+        var val = input.value.trim();
+
+        if (val) {
+            var exists = Array.prototype.some.call(select.options, function (o) {
+                return o.value.toLowerCase() === val.toLowerCase() && o.value !== '__add_new__';
+            });
+            if (!exists) {
+                var addOpt = select.querySelector('option[value="__add_new__"]');
+                var opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = val;
+                select.insertBefore(opt, addOpt);
+            }
+            select.value = val;
+        } else {
+            select.selectedIndex = 0;
+        }
+
+        input.classList.add('d-none');
+        input.value = '';
+    }
+
+    document.addEventListener('change', function (e) {
+        if (e.target.classList && e.target.classList.contains('unit-select') && e.target.value === '__add_new__') {
+            var wrap = e.target.closest('.unit-select-wrap');
+            var input = wrap ? wrap.querySelector('.unit-custom-input') : null;
+            if (input) {
+                input.classList.remove('d-none');
+                input.value = '';
+                input.focus();
+            }
+        }
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.target.classList && e.target.classList.contains('unit-custom-input') && e.key === 'Enter') {
+            e.preventDefault();
+            commitCustomUnit(e.target);
+        }
+    });
+
+    document.addEventListener('focusout', function (e) {
+        if (e.target.classList && e.target.classList.contains('unit-custom-input')) {
+            commitCustomUnit(e.target);
+        }
+    });
 });
 </script>
 
