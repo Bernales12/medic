@@ -2368,6 +2368,8 @@ body {
     color: var(--purple-950);
     font-weight: 800;
     letter-spacing: -.3px;
+    font-size: 19px;
+    margin-bottom: 2px;
 }
 
 
@@ -2420,7 +2422,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
 }
 
 
@@ -2437,20 +2439,20 @@ body {
 .kpi-card {
     display: flex;
     align-items: flex-start;
-    gap: 14px;
-    padding: 20px;
+    gap: 12px;
+    padding: 14px;
 }
 
 
 .kpi-icon {
-    width: 46px;
-    height: 46px;
-    min-width: 46px;
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 17px;
+    font-size: 15px;
     color: #ffffff;
     background: linear-gradient(135deg, var(--purple-400), var(--purple-600));
     box-shadow: 0 6px 14px rgba(124, 58, 237, .30);
@@ -2464,7 +2466,7 @@ body {
 
 .kpi-body small {
     color: var(--muted);
-    font-size: 11.5px;
+    font-size: 10.5px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: .4px;
@@ -2472,11 +2474,11 @@ body {
 
 
 .kpi-number {
-    font-size: 26px;
+    font-size: 21px;
     font-weight: 800;
     color: var(--purple-950);
-    line-height: 1.25;
-    margin-top: 2px;
+    line-height: 1.2;
+    margin-top: 1px;
 }
 
 
@@ -2789,26 +2791,14 @@ a:hover { color: var(--purple-700); }
 .btn-enhanced{border-radius:10px!important;font-weight:700!important;padding:9px 15px!important;transition:transform .18s ease,box-shadow .18s ease,filter .18s ease!important}
 .btn-enhanced:hover{transform:translateY(-1px);box-shadow:0 7px 18px rgba(0,0,0,.14);filter:brightness(1.03)}
 .delivery-history-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.theme-toggle-btn{border:1px solid var(--purple-600,#6d28d9)!important;background:linear-gradient(135deg,var(--purple-500,#7c3aed),var(--purple-600,#6d28d9))!important;color:#fff!important;border-radius:10px!important;font-weight:700!important;padding:8px 12px!important;box-shadow:0 3px 8px rgba(109,40,217,.22);margin:0}
-.theme-toggle-btn:hover{background:linear-gradient(135deg,var(--purple-600,#6d28d9),var(--purple-700,#5b21b6))!important;box-shadow:0 6px 16px rgba(0,0,0,.18)}
-.enhanced-modal{border:0!important;border-radius:18px!important;overflow:hidden;background:var(--enh-card,#fff);color:var(--enh-text,#241b35);box-shadow:0 24px 70px rgba(0,0,0,.25)}
-.enhanced-modal .modal-header{border-bottom:1px solid var(--enh-border,#e5e7eb);padding:18px 20px}
-.enhanced-modal .modal-footer{border-top:1px solid var(--enh-border,#e5e7eb)}
+.enhanced-modal{border:0!important;border-radius:18px!important;overflow:hidden;background:#fff;color:#241b35;box-shadow:0 24px 70px rgba(0,0,0,.25)}
+.enhanced-modal .modal-header{border-bottom:1px solid #e5e7eb;padding:18px 20px}
+.enhanced-modal .modal-footer{border-top:1px solid #e5e7eb}
 .security-warning{display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.18);color:#991b1b}
 .security-warning>i{font-size:20px;margin-top:2px}
 .password-toggle-wrap{position:relative}
 .password-toggle-wrap .form-control{padding-right:48px}
 .password-toggle-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:transparent;padding:8px;color:#7b728a;cursor:pointer}
-:root[data-theme="dark"]{--enh-bg:#100b1b;--enh-card:#1b1428;--enh-border:#382b49;--enh-text:#f3eff9;--enh-muted:#b7adc8;--enh-purple:#c4a8ff}
-:root[data-theme="dark"] body{background:var(--enh-bg)!important;color:var(--enh-text)!important}
-:root[data-theme="dark"] .top-navbar,:root[data-theme="dark"] .card-custom,:root[data-theme="dark"] .enhanced-modal{background:var(--enh-card)!important;color:var(--enh-text)!important;border-color:var(--enh-border)!important}
-:root[data-theme="dark"] .table{--bs-table-bg:var(--enh-card);--bs-table-color:var(--enh-text);--bs-table-border-color:var(--enh-border)}
-:root[data-theme="dark"] .form-control,:root[data-theme="dark"] .form-select{background:#241b34!important;color:#f5f1fb!important;border-color:#443653!important}
-:root[data-theme="dark"] .form-control::placeholder{color:#9f93b0!important}
-:root[data-theme="dark"] .text-muted{color:var(--enh-muted)!important}
-:root[data-theme="dark"] .btn-light{background:#2a2038!important;color:#f5f1fb!important;border-color:#443653!important}
-:root[data-theme="dark"] .security-warning{color:#fecaca;background:rgba(220,38,38,.12)}
-.floating-theme-toggle{position:fixed;right:18px;bottom:18px;z-index:1100}
 </style>
 
 </head>
@@ -2910,7 +2900,7 @@ a:hover { color: var(--purple-700); }
      TOP NAV
 =========================================================== -->
 
-<div class="top-navbar px-4 py-3 d-flex justify-content-between align-items-center">
+<div class="top-navbar px-3 py-2 d-flex justify-content-between align-items-center">
 
 <div class="d-flex align-items-center">
 <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">
@@ -2924,13 +2914,9 @@ a:hover { color: var(--purple-700); }
 
 <div class="d-flex align-items-center">
 
-<button type="button" class="btn btn-sm btn-outline-primary me-2" data-bs-toggle="modal" data-bs-target="#accountModal">
+<button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#accountModal">
 <i class="fa-solid fa-circle-user me-1"></i>
 <?php echo h(currentUsername()); ?>
-</button>
-
-<button type="button" class="btn theme-toggle-btn" data-theme-toggle>
-<i class="fa-solid fa-moon"></i><span class="theme-label">Dark Mode</span>
 </button>
 
 </div>
@@ -3086,7 +3072,7 @@ connections to Supabase, and that SSL is enabled).
 <div class="row g-3 mb-4">
 
 <div class="col-lg-5">
-<div class="card-custom p-4 h-100">
+<div class="card-custom p-3 h-100">
 <div class="card-title-row">
 <h6><i class="fa-solid fa-chart-line text-primary me-1"></i> Dispensing Trend (6 Months)</h6>
 </div>
@@ -3095,7 +3081,7 @@ connections to Supabase, and that SSL is enabled).
 </div>
 
 <div class="col-lg-4">
-<div class="card-custom p-4 h-100">
+<div class="card-custom p-3 h-100">
 <div class="card-title-row">
 <h6><i class="fa-solid fa-chart-pie text-primary me-1"></i> Stock by Category</h6>
 </div>
@@ -3104,7 +3090,7 @@ connections to Supabase, and that SSL is enabled).
 </div>
 
 <div class="col-lg-3">
-<div class="card-custom p-4 h-100">
+<div class="card-custom p-3 h-100">
 <div class="card-title-row">
 <h6><i class="fa-solid fa-chart-simple text-primary me-1"></i> Stock Status</h6>
 </div>
@@ -3123,7 +3109,7 @@ connections to Supabase, and that SSL is enabled).
 <!-- EXPIRED -->
 
 <div class="col-lg-6">
-<div class="card-custom p-4 h-100">
+<div class="card-custom p-3 h-100">
 <div class="card-title-row">
 <h5><i class="fa-solid fa-calendar-xmark text-danger me-2"></i>Expired Medicines</h5>
 <span class="badge bg-danger"><?php echo $expiredCount; ?></span>
@@ -3156,7 +3142,7 @@ connections to Supabase, and that SSL is enabled).
 <!-- EXPIRING -->
 
 <div class="col-lg-6">
-<div class="card-custom p-4 h-100">
+<div class="card-custom p-3 h-100">
 <div class="card-title-row">
 <h5><i class="fa-solid fa-triangle-exclamation text-warning me-2"></i>Expiration Within 30 Days</h5>
 <span class="badge bg-warning text-dark"><?php echo $expiringSoonCount; ?></span>
@@ -3196,7 +3182,7 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 <div class="row g-3 mb-4">
 
 <div class="col-lg-6">
-<div class="card-custom p-4 h-100">
+<div class="card-custom p-3 h-100">
 <div class="card-title-row">
 <h5><i class="fa-solid fa-box-open text-warning me-2"></i>Low Stock Alerts</h5>
 <span class="badge bg-warning text-dark">Individual Threshold</span>
@@ -3205,9 +3191,9 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 <?php if (empty($lowStockMedicines)): ?>
 <p class="text-muted text-center py-3">No low-stock medicines.</p>
 <?php else: ?>
-<div>
+<div id="lowStockAlertsList" class="limited-list" data-limit="7">
 <?php foreach ($lowStockMedicines as $med): ?>
-<div class="alert-list-item">
+<div class="alert-list-item list-row">
 <div>
 <div class="med-name"><?php echo h(medicineFullName($med)); ?></div>
 <div class="med-cat"><?php echo h($med['category'] ?? 'General'); ?> &middot; Batch <?php echo h($med['batch_number'] ?? ''); ?></div>
@@ -3219,13 +3205,14 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 </div>
 <?php endforeach; ?>
 </div>
+<div class="list-footer"><button type="button" class="btn btn-sm btn-outline-warning view-all-btn" data-table="lowStockAlertsList">View All</button></div>
 <?php endif; ?>
 
 </div>
 </div>
 
 <div class="col-lg-6">
-<div class="card-custom p-4 h-100">
+<div class="card-custom p-3 h-100">
 <div class="card-title-row">
 <h5>Recent Medicines Dispensed</h5>
 <button class="btn btn-sm btn-outline-primary" data-bs-toggle="pill" data-bs-target="#pane-stockout">View All</button>
@@ -3275,7 +3262,7 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 
 <!-- ADD MEDICINE -->
 
-<div class="card-custom p-4 mb-4">
+<div class="card-custom p-3 mb-4">
 <h5 class="mb-3">Register New Medicine</h5>
 
 <form method="POST">
@@ -3347,7 +3334,7 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 
 <!-- INVENTORY TABLE -->
 
-<div class="card-custom p-4">
+<div class="card-custom p-3">
 <div class="card-title-row">
 <div><h5>Complete Medicine List</h5><small class="text-muted">Showing up to 7 medicines</small></div>
 <span class="badge bg-primary"><?php echo $totalProducts; ?> items</span>
@@ -3526,7 +3513,7 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 </a>
 </div>
 
-<div class="card-custom p-4 mb-4">
+<div class="card-custom p-3 mb-4">
 <h5 class="mb-3"><i class="fa-solid fa-truck-fast text-primary me-2"></i>Receive Delivery</h5>
 <form method="POST"><input type="hidden" name="action" value="receive_delivery">
 <div class="row g-3">
@@ -3545,16 +3532,16 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 </div></form>
 </div>
 
-<div class="card-custom p-4 mb-4">
+<div class="card-custom p-3 mb-4">
 <div class="card-title-row"><div><h5>Inventory Products</h5><small class="text-muted">Edit inventory directly from the Delivery Stock module.</small></div></div>
 <div class="list-toolbar"><input type="search" class="form-control list-search" data-table="deliveryInventoryList" placeholder="Search medicine, batch..." autocomplete="off"></div>
 <div class="table-responsive"><table id="deliveryInventoryList" class="table table-bordered table-custom limited-list" data-limit="7"><thead><tr><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Current Stock</th><th>Action</th></tr></thead><tbody><?php foreach ($medicineInventory as $key => $med): ?><tr class="list-row"><td class="fw-bold"><?php echo h(medicineFullName($med)); ?></td><td><?php echo h($med['batch_number'] ?? ''); ?></td><td><?php echo h($med['expiration_date'] ?? ''); ?></td><td class="fw-bold"><?php echo intval($med['quantity'] ?? 0); ?></td><td><button type="button" class="btn btn-sm btn-primary delivery-edit-btn" data-bs-toggle="modal" data-bs-target="#editModal<?php echo h($key); ?>" data-return-tab="delivery"><i class="fa-solid fa-pen me-1"></i>Edit Inventory</button></td></tr><?php endforeach; ?></tbody></table></div>
 <div class="list-footer"><button type="button" class="btn btn-outline-primary view-all-btn" data-table="deliveryInventoryList">View All</button></div>
 </div>
 
-<div class="card-custom p-4 mb-4"><div class="card-title-row"><div><h5><i class="fa-solid fa-calendar-day text-success me-2"></i>Today's Delivery Report</h5><small class="text-muted"><?php echo date('F j, Y'); ?></small></div><span class="badge bg-success"><?php echo number_format($todayDeliveryTotal); ?> units delivered</span></div><?php if (empty($todayDeliveryByMedicine)): ?><div class="text-muted text-center py-4">No deliveries recorded today.</div><?php else: ?><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Quantity Delivered Today</th></tr></thead><tbody><?php foreach ($todayDeliveryByMedicine as $name => $qty): ?><tr><td class="fw-bold"><?php echo h($name); ?></td><td class="text-success fw-bold">+<?php echo number_format($qty); ?> units</td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?></div>
+<div class="card-custom p-3 mb-4"><div class="card-title-row"><div><h5><i class="fa-solid fa-calendar-day text-success me-2"></i>Today's Delivery Report</h5><small class="text-muted"><?php echo date('F j, Y'); ?></small></div><span class="badge bg-success"><?php echo number_format($todayDeliveryTotal); ?> units delivered</span></div><?php if (empty($todayDeliveryByMedicine)): ?><div class="text-muted text-center py-4">No deliveries recorded today.</div><?php else: ?><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Quantity Delivered Today</th></tr></thead><tbody><?php foreach ($todayDeliveryByMedicine as $name => $qty): ?><tr><td class="fw-bold"><?php echo h($name); ?></td><td class="text-success fw-bold">+<?php echo number_format($qty); ?> units</td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?></div>
 
-<div class="card-custom p-4">
+<div class="card-custom p-3">
 <div class="card-title-row">
 <div>
 <h5 class="mb-1">Delivery History</h5>
@@ -3592,7 +3579,7 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 </div>
 
 
-<div class="card-custom p-4 mb-4">
+<div class="card-custom p-3 mb-4">
 <h5 class="mb-3"><i class="fa-solid fa-truck-ramp-box text-danger me-2"></i>Dispense Medicine</h5>
 
 <!-- STEP 1: pick a medicine + qty, add it to the list. Repeat for as many
@@ -3667,7 +3654,7 @@ No medicines added yet. Select a medicine above and click "Add to List".
 
 <!-- DISPENSING HISTORY -->
 
-<div class="card-custom p-4">
+<div class="card-custom p-3">
 <div class="d-flex justify-content-between align-items-center mb-3">
 <h5 class="mb-0">Dispensing History</h5>
 <button type="button" class="btn btn-danger btn-sm btn-enhanced" id="clearDispenseHistoryBtn">
@@ -3748,7 +3735,7 @@ No medicines added yet. Select a medicine above and click "Add to List".
 
 <!-- MONTHLY DISPENSING -->
 
-<div class="card-custom p-4 mb-4">
+<div class="card-custom p-3 mb-4">
 
 <div class="card-title-row">
 <div>
@@ -3859,7 +3846,7 @@ No medicines added yet. Select a medicine above and click "Add to List".
      EXPIRATION REPORT
 ========================================================= -->
 
-<div class="card-custom p-4 mb-4"><div class="card-title-row"><div><h5><i class="fa-solid fa-truck-fast text-success me-2"></i>Delivery / Stock-In Report</h5><small class="text-muted">Quantity delivered for every medicine.</small></div><span class="badge bg-success"><?php echo number_format($monthlyDeliveryTotal); ?> units this month</span></div>
+<div class="card-custom p-3 mb-4"><div class="card-title-row"><div><h5><i class="fa-solid fa-truck-fast text-success me-2"></i>Delivery / Stock-In Report</h5><small class="text-muted">Quantity delivered for every medicine.</small></div><span class="badge bg-success"><?php echo number_format($monthlyDeliveryTotal); ?> units this month</span></div>
 <form method="GET" class="row g-2 mb-4"><div class="col-md-3"><label class="form-label">Month</label><select name="delivery_month" class="form-select"><?php for ($m = 1; $m <= 12; $m++): ?><option value="<?php echo $m; ?>" <?php echo $m == $selectedDeliveryMonth ? 'selected' : ''; ?>><?php echo date('F', mktime(0,0,0,$m,1)); ?></option><?php endfor; ?></select></div><div class="col-md-2"><label class="form-label">Year</label><select name="delivery_year" class="form-select"><?php for ($y = date('Y') - 3; $y <= date('Y') + 1; $y++): ?><option value="<?php echo $y; ?>" <?php echo $y == $selectedDeliveryYear ? 'selected' : ''; ?>><?php echo $y; ?></option><?php endfor; ?></select></div><div class="col-md-3 d-flex align-items-end"><button class="btn btn-success"><i class="fa-solid fa-filter me-1"></i>Show Delivery Report</button></div>
 <div class="col-md-3 d-flex align-items-end"><a class="btn btn-outline-success w-100" href="?export=delivery&month=<?php echo $selectedDeliveryMonth; ?>&year=<?php echo $selectedDeliveryYear; ?>"><i class="fa-solid fa-file-excel me-1"></i>Save Selected Month to Excel</a></div>
 </form>
@@ -3867,7 +3854,7 @@ No medicines added yet. Select a medicine above and click "Add to List".
 <h6 class="fw-bold">Delivery Quantity by Medicine</h6><?php if (empty($monthlyDeliveryByMedicine)): ?><div class="text-muted text-center py-4">No deliveries recorded for this month.</div><?php else: ?><div class="table-responsive mb-4"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Total Delivered</th></tr></thead><tbody><?php foreach ($monthlyDeliveryByMedicine as $name => $qty): ?><tr><td class="fw-bold"><?php echo h($name); ?></td><td class="text-success fw-bold">+<?php echo number_format($qty); ?> units</td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?>
 <h6 class="fw-bold">Detailed Delivery Transactions</h6><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Quantity Delivered</th></tr></thead><tbody><?php $hasMonthlyDelivery=false; foreach ($deliveryLogs as $delivery): $ts=!empty($delivery['date_iso'])?strtotime($delivery['date_iso']):false; if($ts===false || intval(date('m',$ts))!==$selectedDeliveryMonth || intval(date('Y',$ts))!==$selectedDeliveryYear) continue; $hasMonthlyDelivery=true; ?><tr><td><?php echo h($delivery['date']); ?></td><td class="fw-bold"><?php echo h(medicineFullName($delivery)); ?></td><td><?php echo h($delivery['batch_number']); ?></td><td><?php echo h($delivery['expiration_date']); ?></td><td class="text-success fw-bold">+<?php echo intval($delivery['quantity_delivered']); ?></td></tr><?php endforeach; if(!$hasMonthlyDelivery): ?><tr><td colspan="5" class="text-center text-muted">No delivery transactions for this month.</td></tr><?php endif; ?></tbody></table></div></div>
 
-<div class="card-custom p-4">
+<div class="card-custom p-3">
 
 <div class="card-title-row">
 <h5><i class="fa-solid fa-calendar-check text-warning me-2"></i>Expiration Report</h5>
@@ -4353,7 +4340,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!table) return;
 
         var rows = Array.prototype.slice.call(
-            table.querySelectorAll('tbody tr.list-row')
+            table.querySelectorAll('.list-row')
         );
         var limit = parseInt(table.getAttribute('data-limit') || '7', 10);
         if (!Number.isFinite(limit) || limit < 1) limit = 7;
@@ -4409,6 +4396,7 @@ document.addEventListener('DOMContentLoaded', function () {
     setupLimitedTable(document.getElementById('completeMedicineList'));
     setupLimitedTable(document.getElementById('deliveryInventoryList'));
     setupLimitedTable(document.getElementById('deliveryHistoryList'));
+    setupLimitedTable(document.getElementById('lowStockAlertsList'));
 });
 </script>
 
@@ -4498,27 +4486,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const root = document.documentElement;
-
-    function applyTheme(theme) {
-        root.setAttribute('data-theme', theme);
-        localStorage.setItem('pharmacy-theme', theme);
-        document.querySelectorAll('[data-theme-toggle]').forEach(function(btn) {
-            const icon = btn.querySelector('i');
-            const label = btn.querySelector('.theme-label');
-            if (icon) icon.className = theme === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
-            if (label) label.textContent = theme === 'dark' ? 'Light Mode' : 'Dark Mode';
-        });
-    }
-
-    applyTheme(localStorage.getItem('pharmacy-theme') || 'light');
-
-    document.querySelectorAll('[data-theme-toggle]').forEach(function(btn) {
-        btn.addEventListener('click', function () {
-            applyTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
-        });
-    });
-
     const clearBtn = document.getElementById('clearDeliveryHistoryBtn');
     const modalEl = document.getElementById('clearHistoryModal');
     const password = document.getElementById('clearHistoryPassword');
