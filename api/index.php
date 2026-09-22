@@ -3191,7 +3191,7 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 <?php if (empty($lowStockMedicines)): ?>
 <p class="text-muted text-center py-3">No low-stock medicines.</p>
 <?php else: ?>
-<div id="lowStockAlertsList" class="limited-list" data-limit="7">
+<div id="lowStockAlertsList" class="paginated-list" data-page-size="5">
 <?php foreach ($lowStockMedicines as $med): ?>
 <div class="alert-list-item list-row">
 <div>
@@ -3205,7 +3205,7 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 </div>
 <?php endforeach; ?>
 </div>
-<div class="list-footer"><button type="button" class="btn btn-sm btn-outline-warning view-all-btn" data-table="lowStockAlertsList">View All</button></div>
+<div class="list-pagination" data-table="lowStockAlertsList"></div>
 <?php endif; ?>
 
 </div>
@@ -3215,25 +3215,27 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 <div class="card-custom p-3 h-100">
 <div class="card-title-row">
 <h5>Recent Medicines Dispensed</h5>
-<button class="btn btn-sm btn-outline-primary" data-bs-toggle="pill" data-bs-target="#pane-stockout">View All</button>
 </div>
 
 <div class="table-responsive">
-<table class="table table-custom">
+<table id="recentDispensedList" class="table table-custom paginated-list" data-page-size="5">
 <thead><tr><th>Date</th><th>Medicine</th><th>Qty</th><th>Recipient</th></tr></thead>
 <tbody>
-<?php $recentLogs = array_slice($dispenseLogs, 0, 6); ?>
-<?php foreach ($recentLogs as $log): ?>
-<tr>
+<?php foreach ($dispenseLogs as $log): ?>
+<tr class="list-row">
 <td><?php echo h($log['date'] ?? ''); ?></td>
 <td class="fw-bold"><?php echo h($log['inventory_name'] ?? ''); ?></td>
 <td class="text-danger fw-bold">-<?php echo intval($log['qty_out'] ?? 0); ?></td>
 <td><?php echo h($log['recipient'] ?? ''); ?></td>
 </tr>
 <?php endforeach; ?>
+<?php if (empty($dispenseLogs)): ?>
+<tr><td colspan="4" class="text-center text-muted">No dispensing transactions yet.</td></tr>
+<?php endif; ?>
 </tbody>
 </table>
 </div>
+<div class="list-pagination" data-table="recentDispensedList"></div>
 
 </div>
 </div>
@@ -3340,7 +3342,7 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 
 <div class="card-custom p-3">
 <div class="card-title-row">
-<div><h5>Complete Medicine List</h5><small class="text-muted">Showing up to 7 medicines</small></div>
+<div><h5>Complete Medicine List</h5><small class="text-muted">Paginated, 7 per page</small></div>
 <span class="badge bg-primary"><?php echo $totalProducts; ?> items</span>
 </div>
 <div class="list-toolbar">
@@ -3348,7 +3350,7 @@ $daysLeft = ceil(($exp - $todayTimestamp) / 86400);
 </div>
 
 <div class="table-responsive">
-<table id="completeMedicineList" class="table table-bordered table-custom limited-list" data-limit="7">
+<table id="completeMedicineList" class="table table-bordered table-custom paginated-list" data-page-size="7">
 <thead>
 <tr>
 <th>Medicine</th><th>Strength</th><th>Form</th><th>Category</th><th>Batch</th>
@@ -3405,7 +3407,7 @@ if ($exp !== false && $exp <= $todayTimestamp) {
 </tbody>
 </table>
 </div>
-<div class="list-footer"><button type="button" class="btn btn-outline-primary view-all-btn" data-table="completeMedicineList">View All</button></div>
+<div class="list-pagination" data-table="completeMedicineList"></div>
 </div>
 
 
@@ -3549,8 +3551,8 @@ foreach ($units as $unit): ?>
 <div class="card-custom p-3 mb-4">
 <div class="card-title-row"><div><h5>Inventory Products</h5><small class="text-muted">Edit inventory directly from the Delivery Stock module.</small></div></div>
 <div class="list-toolbar"><input type="search" class="form-control list-search" data-table="deliveryInventoryList" placeholder="Search medicine, batch..." autocomplete="off"></div>
-<div class="table-responsive"><table id="deliveryInventoryList" class="table table-bordered table-custom limited-list" data-limit="7"><thead><tr><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Current Stock</th><th>Action</th></tr></thead><tbody><?php foreach ($medicineInventory as $key => $med): ?><tr class="list-row"><td class="fw-bold"><?php echo h(medicineFullName($med)); ?></td><td><?php echo h($med['batch_number'] ?? ''); ?></td><td><?php echo h($med['expiration_date'] ?? ''); ?></td><td class="fw-bold"><?php echo intval($med['quantity'] ?? 0); ?></td><td><button type="button" class="btn btn-sm btn-primary delivery-edit-btn" data-bs-toggle="modal" data-bs-target="#editModal<?php echo h($key); ?>" data-return-tab="delivery"><i class="fa-solid fa-pen me-1"></i>Edit Inventory</button></td></tr><?php endforeach; ?></tbody></table></div>
-<div class="list-footer"><button type="button" class="btn btn-outline-primary view-all-btn" data-table="deliveryInventoryList">View All</button></div>
+<div class="table-responsive"><table id="deliveryInventoryList" class="table table-bordered table-custom paginated-list" data-page-size="7"><thead><tr><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Current Stock</th><th>Action</th></tr></thead><tbody><?php foreach ($medicineInventory as $key => $med): ?><tr class="list-row"><td class="fw-bold"><?php echo h(medicineFullName($med)); ?></td><td><?php echo h($med['batch_number'] ?? ''); ?></td><td><?php echo h($med['expiration_date'] ?? ''); ?></td><td class="fw-bold"><?php echo intval($med['quantity'] ?? 0); ?></td><td><button type="button" class="btn btn-sm btn-primary delivery-edit-btn" data-bs-toggle="modal" data-bs-target="#editModal<?php echo h($key); ?>" data-return-tab="delivery"><i class="fa-solid fa-pen me-1"></i>Edit Inventory</button></td></tr><?php endforeach; ?></tbody></table></div>
+<div class="list-pagination" data-table="deliveryInventoryList"></div>
 </div>
 
 <div class="card-custom p-3 mb-4"><div class="card-title-row"><div><h5><i class="fa-solid fa-calendar-day text-success me-2"></i>Today's Delivery Report</h5><small class="text-muted"><?php echo date('F j, Y'); ?></small></div><span class="badge bg-success"><?php echo number_format($todayDeliveryTotal); ?> units delivered</span></div><?php if (empty($todayDeliveryByMedicine)): ?><div class="text-muted text-center py-4">No deliveries recorded today.</div><?php else: ?><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Quantity Delivered Today</th></tr></thead><tbody><?php foreach ($todayDeliveryByMedicine as $name => $qty): ?><tr><td class="fw-bold"><?php echo h($name); ?></td><td class="text-success fw-bold">+<?php echo number_format($qty); ?> units</td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?></div>
@@ -3576,7 +3578,7 @@ foreach ($units as $unit): ?>
 </form>
 <div class="alert alert-success"><strong><?php echo date('F Y', strtotime("$selectedDeliveryYear-$selectedDeliveryMonth-01")); ?></strong> &mdash; Total delivered: <strong><?php echo number_format($monthlyDeliveryTotal); ?> units</strong></div>
 <div class="list-toolbar"><input type="search" class="form-control list-search" data-table="deliveryHistoryList" placeholder="Search date, medicine, batch..." autocomplete="off"></div>
-<div class="table-responsive"><table id="deliveryHistoryList" class="table table-bordered table-custom limited-list" data-limit="7"><thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Quantity Delivered</th><th>Current Stock</th><th>Action</th></tr></thead><tbody><?php $hasDeliveryHistory=false; foreach ($deliveryLogs as $delivery): $ts=!empty($delivery['date_iso'])?strtotime($delivery['date_iso']):false; if($ts===false || intval(date('m',$ts))!==$selectedDeliveryMonth || intval(date('Y',$ts))!==$selectedDeliveryYear) continue; $hasDeliveryHistory=true; $deliveryMedicine = !empty($delivery['medicine_sku']) ? fetchMedicine($delivery['medicine_sku']) : null; ?><tr class="list-row"><td><?php echo h($delivery['date']); ?></td><td class="fw-bold"><?php echo h(medicineFullName($delivery)); ?></td><td><?php echo h($delivery['batch_number']); ?></td><td><?php echo h($delivery['expiration_date']); ?></td><td class="text-success fw-bold">+<?php echo intval($delivery['quantity_delivered']); ?></td><td class="fw-bold"><?php echo $deliveryMedicine ? intval($deliveryMedicine['quantity']) : '—'; ?></td><td><?php if ($deliveryMedicine): ?><button type="button" class="btn btn-sm btn-primary delivery-edit-btn" data-bs-toggle="modal" data-bs-target="#editModal<?php echo h($deliveryMedicine['sku']); ?>" data-return-tab="delivery"><i class="fa-solid fa-pen me-1"></i>Edit</button><?php else: ?><span class="text-muted">Unavailable</span><?php endif; ?></td></tr><?php endforeach; if(!$hasDeliveryHistory): ?><tr><td colspan="7" class="text-center text-muted">No delivery transactions for this month.</td></tr><?php endif; ?></tbody></table></div><div class="list-footer"><button type="button" class="btn btn-outline-success view-all-btn" data-table="deliveryHistoryList">View All</button></div></div>
+<div class="table-responsive"><table id="deliveryHistoryList" class="table table-bordered table-custom paginated-list" data-page-size="7"><thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Quantity Delivered</th><th>Current Stock</th><th>Action</th></tr></thead><tbody><?php $hasDeliveryHistory=false; foreach ($deliveryLogs as $delivery): $ts=!empty($delivery['date_iso'])?strtotime($delivery['date_iso']):false; if($ts===false || intval(date('m',$ts))!==$selectedDeliveryMonth || intval(date('Y',$ts))!==$selectedDeliveryYear) continue; $hasDeliveryHistory=true; $deliveryMedicine = !empty($delivery['medicine_sku']) ? fetchMedicine($delivery['medicine_sku']) : null; ?><tr class="list-row"><td><?php echo h($delivery['date']); ?></td><td class="fw-bold"><?php echo h(medicineFullName($delivery)); ?></td><td><?php echo h($delivery['batch_number']); ?></td><td><?php echo h($delivery['expiration_date']); ?></td><td class="text-success fw-bold">+<?php echo intval($delivery['quantity_delivered']); ?></td><td class="fw-bold"><?php echo $deliveryMedicine ? intval($deliveryMedicine['quantity']) : '—'; ?></td><td><?php if ($deliveryMedicine): ?><button type="button" class="btn btn-sm btn-primary delivery-edit-btn" data-bs-toggle="modal" data-bs-target="#editModal<?php echo h($deliveryMedicine['sku']); ?>" data-return-tab="delivery"><i class="fa-solid fa-pen me-1"></i>Edit</button><?php else: ?><span class="text-muted">Unavailable</span><?php endif; ?></td></tr><?php endforeach; if(!$hasDeliveryHistory): ?><tr><td colspan="7" class="text-center text-muted">No delivery transactions for this month.</td></tr><?php endif; ?></tbody></table></div><div class="list-pagination" data-table="deliveryHistoryList"></div></div>
 
 </div>
 
@@ -3677,11 +3679,11 @@ No medicines added yet. Select a medicine above and click "Add to List".
 </div>
 
 <div class="table-responsive">
-<table class="table table-bordered table-custom">
+<table id="dispenseHistoryFullList" class="table table-bordered table-custom paginated-list" data-page-size="8">
 <thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Qty Out</th><th>Recipient</th></tr></thead>
 <tbody>
 <?php foreach ($dispenseLogs as $log): ?>
-<tr>
+<tr class="list-row">
 <td><?php echo h($log['date']); ?></td>
 <td class="fw-bold"><?php echo h($log['inventory_name']); ?></td>
 <td><?php echo h($log['batch_number']); ?></td>
@@ -3692,6 +3694,7 @@ No medicines added yet. Select a medicine above and click "Add to List".
 </tbody>
 </table>
 </div>
+<div class="list-pagination" data-table="dispenseHistoryFullList"></div>
 </div>
 
 </div>
@@ -4341,73 +4344,157 @@ new Chart(document.getElementById('statusDonut'), {
 
 <style>
 /* ============================================================
-   LIST LIMIT / VIEW ALL FIX
+   LIST PAGINATION
 ============================================================ */
 .list-toolbar { margin: 0 0 14px 0; max-width: 420px; }
 .list-search { width: 100%; }
 .list-row.list-hidden { display: none !important; }
-.list-footer { text-align: center; margin-top: 14px; }
-.view-all-btn { min-width: 110px; }
+.list-pagination {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+}
+.list-pagination .page-btn {
+    min-width: 34px;
+    height: 34px;
+    padding: 0 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border, #eae4f7);
+    background: #fff;
+    color: #5b4b75;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all .15s ease;
+}
+.list-pagination .page-btn:hover:not(:disabled) {
+    border-color: #b18ffb;
+    color: #7c3aed;
+}
+.list-pagination .page-btn.active {
+    background: linear-gradient(135deg, #7c3aed, #5b21b6);
+    border-color: #5b21b6;
+    color: #fff;
+}
+.list-pagination .page-btn:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+}
 </style>
 
 <script>
 /* ============================================================
-   VIEW ALL / SHOW LESS FOR INVENTORY & DELIVERY TABLES
-   The previous code was placed in the login-page renderer and
-   was also written with literal \\n characters, so it never ran
-   on the dashboard. This version runs on the dashboard itself.
+   PAGINATION FOR LONG LISTS
+   Applies real page-number pagination (not just "view all") to
+   any table/list marked with class "paginated-list" and rows
+   marked with class "list-row". Works with an optional search
+   box (.list-search[data-table="..."]) and renders numbered
+   page controls into .list-pagination[data-table="..."].
 ============================================================ */
 document.addEventListener('DOMContentLoaded', function () {
-    function setupLimitedTable(table) {
-        if (!table) return;
 
-        var rows = Array.prototype.slice.call(
-            table.querySelectorAll('.list-row')
-        );
-        var limit = parseInt(table.getAttribute('data-limit') || '7', 10);
-        if (!Number.isFinite(limit) || limit < 1) limit = 7;
+    function setupPaginatedList(container) {
+        if (!container) return;
 
-        var search = document.querySelector(
-            '.list-search[data-table="' + table.id + '"]'
-        );
-        var button = document.querySelector(
-            '.view-all-btn[data-table="' + table.id + '"]'
-        );
+        var rows = Array.prototype.slice.call(container.querySelectorAll('.list-row'));
+        var pageSize = parseInt(container.getAttribute('data-page-size') || container.getAttribute('data-limit') || '7', 10);
+        if (!Number.isFinite(pageSize) || pageSize < 1) pageSize = 7;
 
-        var expanded = false;
+        var search = document.querySelector('.list-search[data-table="' + container.id + '"]');
+        var paginationEl = document.querySelector('.list-pagination[data-table="' + container.id + '"]');
+        var currentPage = 1;
 
-        function render() {
+        function getFiltered() {
             var query = search ? search.value.toLowerCase().trim() : '';
-            var matches = rows.filter(function (row) {
+            return rows.filter(function (row) {
                 return !query || row.textContent.toLowerCase().indexOf(query) !== -1;
             });
+        }
 
-            rows.forEach(function (row) {
-                row.classList.add('list-hidden');
+        function render() {
+            var filtered = getFiltered();
+            var totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+
+            if (currentPage > totalPages) currentPage = totalPages;
+            if (currentPage < 1) currentPage = 1;
+
+            rows.forEach(function (row) { row.classList.add('list-hidden'); });
+
+            var start = (currentPage - 1) * pageSize;
+            filtered.slice(start, start + pageSize).forEach(function (row) {
+                row.classList.remove('list-hidden');
             });
 
-            matches.forEach(function (row, index) {
-                if (expanded || index < limit) {
-                    row.classList.remove('list-hidden');
-                }
-            });
+            renderPagination(totalPages, filtered.length);
+        }
 
-            if (button) {
-                button.style.display = matches.length > limit ? 'inline-block' : 'none';
-                button.textContent = expanded ? 'Show Less' : 'View All';
+        function makeBtn(label, page, disabled, active) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'page-btn' + (active ? ' active' : '');
+            btn.textContent = label;
+            btn.disabled = !!disabled;
+            btn.addEventListener('click', function () {
+                currentPage = page;
+                render();
+            });
+            return btn;
+        }
+
+        function renderPagination(totalPages, totalItems) {
+            if (!paginationEl) return;
+
+            paginationEl.innerHTML = '';
+
+            if (totalItems === 0 || totalPages <= 1) {
+                paginationEl.style.display = 'none';
+                return;
             }
+
+            paginationEl.style.display = 'flex';
+
+            paginationEl.appendChild(makeBtn('\u00AB Prev', currentPage - 1, currentPage === 1));
+
+            var maxButtons = 5;
+            var startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+            var endPage = Math.min(totalPages, startPage + maxButtons - 1);
+            startPage = Math.max(1, endPage - maxButtons + 1);
+
+            if (startPage > 1) {
+                paginationEl.appendChild(makeBtn('1', 1, false, currentPage === 1));
+                if (startPage > 2) {
+                    var dots = document.createElement('span');
+                    dots.textContent = '…';
+                    dots.style.padding = '0 4px';
+                    dots.style.color = '#8b81a3';
+                    paginationEl.appendChild(dots);
+                }
+            }
+
+            for (var p = startPage; p <= endPage; p++) {
+                paginationEl.appendChild(makeBtn(String(p), p, false, p === currentPage));
+            }
+
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    var dots2 = document.createElement('span');
+                    dots2.textContent = '…';
+                    dots2.style.padding = '0 4px';
+                    dots2.style.color = '#8b81a3';
+                    paginationEl.appendChild(dots2);
+                }
+                paginationEl.appendChild(makeBtn(String(totalPages), totalPages, false, currentPage === totalPages));
+            }
+
+            paginationEl.appendChild(makeBtn('Next \u00BB', currentPage + 1, currentPage === totalPages));
         }
 
         if (search) {
             search.addEventListener('input', function () {
-                expanded = true;
-                render();
-            });
-        }
-
-        if (button) {
-            button.addEventListener('click', function () {
-                expanded = !expanded;
+                currentPage = 1;
                 render();
             });
         }
@@ -4415,10 +4502,9 @@ document.addEventListener('DOMContentLoaded', function () {
         render();
     }
 
-    setupLimitedTable(document.getElementById('completeMedicineList'));
-    setupLimitedTable(document.getElementById('deliveryInventoryList'));
-    setupLimitedTable(document.getElementById('deliveryHistoryList'));
-    setupLimitedTable(document.getElementById('lowStockAlertsList'));
+    document.querySelectorAll('.paginated-list').forEach(function (el) {
+        setupPaginatedList(el);
+    });
 });
 </script>
 
