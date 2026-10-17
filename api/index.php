@@ -3808,13 +3808,13 @@ No medicines added yet. Select a medicine above and click "Add to List".
 <div class="text-muted text-center py-4">No medicines were dispensed during this month.</div>
 <?php else: ?>
 
-<div class="table-responsive mb-4">
-<table class="table table-bordered table-custom">
+<div class="table-responsive swipe-wrap mb-2">
+<table id="monthlyReleasedList" class="table table-bordered table-custom paginated-list" data-page-size="10">
 <thead><tr><th>Medicine</th><th>Total Released</th><th>Percentage</th></tr></thead>
 <tbody>
 <?php foreach ($monthlyMedicineTotals as $name => $qty): ?>
 <?php $percentage = $monthlyTotalOut > 0 ? ($qty / $monthlyTotalOut) * 100 : 0; ?>
-<tr>
+<tr class="list-row">
 <td class="fw-bold"><?php echo h($name); ?></td>
 <td class="text-danger fw-bold"><?php echo $qty; ?> units</td>
 <td>
@@ -3827,6 +3827,7 @@ No medicines added yet. Select a medicine above and click "Add to List".
 </tbody>
 </table>
 </div>
+<div class="list-pagination mb-4" data-table="monthlyReleasedList"></div>
 
 <?php endif; ?>
 
@@ -3835,15 +3836,15 @@ No medicines added yet. Select a medicine above and click "Add to List".
 
 <h6 class="fw-bold">Detailed Transactions</h6>
 
-<div class="table-responsive">
-<table class="table table-bordered table-custom">
+<div class="table-responsive swipe-wrap">
+<table id="monthlyTransactionsList" class="table table-bordered table-custom paginated-list" data-page-size="10">
 <thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Quantity</th><th>Recipient</th></tr></thead>
 <tbody>
 <?php if (empty($monthlyDispense)): ?>
 <tr><td colspan="5" class="text-center text-muted">No dispensing transactions for this month.</td></tr>
 <?php else: ?>
 <?php foreach ($monthlyDispense as $log): ?>
-<tr>
+<tr class="list-row">
 <td><?php echo h($log['date']); ?></td>
 <td class="fw-bold"><?php echo h($log['inventory_name']); ?></td>
 <td><?php echo h($log['batch_number']); ?></td>
@@ -3855,6 +3856,7 @@ No medicines added yet. Select a medicine above and click "Add to List".
 </tbody>
 </table>
 </div>
+<div class="list-pagination" data-table="monthlyTransactionsList"></div>
 
 </div>
 
@@ -3868,8 +3870,8 @@ No medicines added yet. Select a medicine above and click "Add to List".
 <div class="col-md-3 d-flex align-items-end"><a class="btn btn-outline-success w-100" href="?export=delivery&month=<?php echo $selectedDeliveryMonth; ?>&year=<?php echo $selectedDeliveryYear; ?>"><i class="fa-solid fa-file-excel me-1"></i>Save Selected Month to Excel</a></div>
 </form>
 <div class="alert alert-success"><strong><?php echo date('F Y', strtotime("$selectedDeliveryYear-$selectedDeliveryMonth-01")); ?></strong> &mdash; Total delivered: <strong><?php echo number_format($monthlyDeliveryTotal); ?> units</strong></div>
-<h6 class="fw-bold">Delivery Quantity by Medicine</h6><?php if (empty($monthlyDeliveryByMedicine)): ?><div class="text-muted text-center py-4">No deliveries recorded for this month.</div><?php else: ?><div class="table-responsive mb-4"><table class="table table-bordered table-custom"><thead><tr><th>Medicine</th><th>Total Delivered</th></tr></thead><tbody><?php foreach ($monthlyDeliveryByMedicine as $name => $qty): ?><tr><td class="fw-bold"><?php echo h($name); ?></td><td class="text-success fw-bold">+<?php echo number_format($qty); ?> units</td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?>
-<h6 class="fw-bold">Detailed Delivery Transactions</h6><div class="table-responsive"><table class="table table-bordered table-custom"><thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Quantity Delivered</th></tr></thead><tbody><?php $hasMonthlyDelivery=false; foreach ($deliveryLogs as $delivery): $ts=!empty($delivery['date_iso'])?strtotime($delivery['date_iso']):false; if($ts===false || intval(date('m',$ts))!==$selectedDeliveryMonth || intval(date('Y',$ts))!==$selectedDeliveryYear) continue; $hasMonthlyDelivery=true; ?><tr><td><?php echo h($delivery['date']); ?></td><td class="fw-bold"><?php echo h(medicineFullName($delivery)); ?></td><td><?php echo h($delivery['batch_number']); ?></td><td><?php echo h($delivery['expiration_date']); ?></td><td class="text-success fw-bold">+<?php echo intval($delivery['quantity_delivered']); ?></td></tr><?php endforeach; if(!$hasMonthlyDelivery): ?><tr><td colspan="5" class="text-center text-muted">No delivery transactions for this month.</td></tr><?php endif; ?></tbody></table></div></div>
+<h6 class="fw-bold">Delivery Quantity by Medicine</h6><?php if (empty($monthlyDeliveryByMedicine)): ?><div class="text-muted text-center py-4">No deliveries recorded for this month.</div><?php else: ?><div class="table-responsive swipe-wrap mb-2"><table id="monthlyDeliveryMedList" class="table table-bordered table-custom paginated-list" data-page-size="10"><thead><tr><th>Medicine</th><th>Total Delivered</th></tr></thead><tbody><?php foreach ($monthlyDeliveryByMedicine as $name => $qty): ?><tr class="list-row"><td class="fw-bold"><?php echo h($name); ?></td><td class="text-success fw-bold">+<?php echo number_format($qty); ?> units</td></tr><?php endforeach; ?></tbody></table></div><div class="list-pagination mb-4" data-table="monthlyDeliveryMedList"></div><?php endif; ?>
+<h6 class="fw-bold">Detailed Delivery Transactions</h6><div class="table-responsive swipe-wrap"><table id="monthlyDeliveryTxList" class="table table-bordered table-custom paginated-list" data-page-size="10"><thead><tr><th>Date</th><th>Medicine</th><th>Batch</th><th>Expiration</th><th>Quantity Delivered</th></tr></thead><tbody><?php $hasMonthlyDelivery=false; foreach ($deliveryLogs as $delivery): $ts=!empty($delivery['date_iso'])?strtotime($delivery['date_iso']):false; if($ts===false || intval(date('m',$ts))!==$selectedDeliveryMonth || intval(date('Y',$ts))!==$selectedDeliveryYear) continue; $hasMonthlyDelivery=true; ?><tr class="list-row"><td><?php echo h($delivery['date']); ?></td><td class="fw-bold"><?php echo h(medicineFullName($delivery)); ?></td><td><?php echo h($delivery['batch_number']); ?></td><td><?php echo h($delivery['expiration_date']); ?></td><td class="text-success fw-bold">+<?php echo intval($delivery['quantity_delivered']); ?></td></tr><?php endforeach; if(!$hasMonthlyDelivery): ?><tr><td colspan="5" class="text-center text-muted">No delivery transactions for this month.</td></tr><?php endif; ?></tbody></table></div><div class="list-pagination" data-table="monthlyDeliveryTxList"></div></div>
 
 <div class="card-custom p-3">
 
@@ -3885,12 +3887,12 @@ No medicines added yet. Select a medicine above and click "Add to List".
 <?php if (empty($expiredMedicines)): ?>
 <p class="text-muted">No expired medicines.</p>
 <?php else: ?>
-<div class="table-responsive">
-<table class="table table-bordered table-custom">
+<div class="table-responsive swipe-wrap">
+<table id="expiredList" class="table table-bordered table-custom paginated-list" data-page-size="10">
 <thead><tr><th>Medicine</th><th>Batch</th><th>Expiration Date</th><th>Inventory Stock</th><th>Status</th></tr></thead>
 <tbody>
 <?php foreach ($expiredMedicines as $med): ?>
-<tr class="expired-row">
+<tr class="expired-row list-row">
 <td class="fw-bold"><?php echo h(medicineFullName($med)); ?></td>
 <td><?php echo h($med['batch_number'] ?? ''); ?></td>
 <td><?php echo h($med['expiration_date'] ?? ''); ?></td>
@@ -3901,6 +3903,7 @@ No medicines added yet. Select a medicine above and click "Add to List".
 </tbody>
 </table>
 </div>
+<div class="list-pagination" data-table="expiredList"></div>
 <?php endif; ?>
 
 <hr>
@@ -3910,13 +3913,13 @@ No medicines added yet. Select a medicine above and click "Add to List".
 <?php if (empty($expiringMedicines)): ?>
 <p class="text-muted">No medicines expiring within the next 30 days.</p>
 <?php else: ?>
-<div class="table-responsive">
-<table class="table table-bordered table-custom">
+<div class="table-responsive swipe-wrap">
+<table id="expiringList" class="table table-bordered table-custom paginated-list" data-page-size="10">
 <thead><tr><th>Medicine</th><th>Batch</th><th>Expiration Date</th><th>Days Remaining</th><th>Stock</th></tr></thead>
 <tbody>
 <?php foreach ($expiringMedicines as $med): ?>
 <?php $daysLeft = ceil((strtotime($med['expiration_date']) - $todayTimestamp) / 86400); ?>
-<tr class="expiring-row">
+<tr class="expiring-row list-row">
 <td class="fw-bold"><?php echo h(medicineFullName($med)); ?></td>
 <td><?php echo h($med['batch_number'] ?? ''); ?></td>
 <td><?php echo h($med['expiration_date'] ?? ''); ?></td>
@@ -3927,6 +3930,7 @@ No medicines added yet. Select a medicine above and click "Add to List".
 </tbody>
 </table>
 </div>
+<div class="list-pagination" data-table="expiringList"></div>
 <?php endif; ?>
 
 </div>
@@ -4383,6 +4387,18 @@ new Chart(document.getElementById('statusDonut'), {
     opacity: .4;
     cursor: not-allowed;
 }
+.list-pagination .page-info {
+    width: 100%;
+    text-align: center;
+    font-size: 11.5px;
+    color: #8b81a3;
+    margin-top: 2px;
+}
+.swipe-wrap { touch-action: pan-y; }
+.swipe-wrap.swipe-next tbody { animation: swipeInNext .22s ease; }
+.swipe-wrap.swipe-prev tbody { animation: swipeInPrev .22s ease; }
+@keyframes swipeInNext { from { opacity: .3; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes swipeInPrev { from { opacity: .3; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
 </style>
 
 <script>
@@ -4406,6 +4422,14 @@ document.addEventListener('DOMContentLoaded', function () {
         var search = document.querySelector('.list-search[data-table="' + container.id + '"]');
         var paginationEl = document.querySelector('.list-pagination[data-table="' + container.id + '"]');
         var currentPage = 1;
+        var swipeWrap = container.closest('.swipe-wrap');
+
+        function animate(dir) {
+            if (!swipeWrap || !dir) return;
+            swipeWrap.classList.remove('swipe-next', 'swipe-prev');
+            void swipeWrap.offsetWidth;
+            swipeWrap.classList.add(dir > 0 ? 'swipe-next' : 'swipe-prev');
+        }
 
         function getFiltered() {
             var query = search ? search.value.toLowerCase().trim() : '';
@@ -4438,8 +4462,10 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.textContent = label;
             btn.disabled = !!disabled;
             btn.addEventListener('click', function () {
+                var dir = page - currentPage;
                 currentPage = page;
                 render();
+                animate(dir);
             });
             return btn;
         }
@@ -4490,6 +4516,52 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             paginationEl.appendChild(makeBtn('Next \u00BB', currentPage + 1, currentPage === totalPages));
+
+            if (swipeWrap) {
+                var info = document.createElement('div');
+                info.className = 'page-info';
+                var from = (currentPage - 1) * pageSize + 1;
+                var to = Math.min(currentPage * pageSize, totalItems);
+                info.textContent = 'Showing ' + from + '\u2013' + to + ' of ' + totalItems + ' \u2022 Swipe left/right to change page';
+                paginationEl.appendChild(info);
+            }
+        }
+
+        function goTo(delta) {
+            var total = Math.max(1, Math.ceil(getFiltered().length / pageSize));
+            var next = Math.min(total, Math.max(1, currentPage + delta));
+            if (next === currentPage) return;
+            currentPage = next;
+            render();
+            animate(delta);
+        }
+
+        if (swipeWrap && !swipeWrap.dataset.swipeBound) {
+            swipeWrap.dataset.swipeBound = '1';
+            var sx = 0, sy = 0, tracking = false;
+            swipeWrap.addEventListener('touchstart', function (e) {
+                if (e.touches.length !== 1) return;
+                sx = e.touches[0].clientX;
+                sy = e.touches[0].clientY;
+                tracking = true;
+            }, { passive: true });
+            swipeWrap.addEventListener('touchend', function (e) {
+                if (!tracking) return;
+                tracking = false;
+                var t = e.changedTouches[0];
+                var dx = t.clientX - sx, dy = t.clientY - sy;
+                if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                    goTo(dx < 0 ? 1 : -1);
+                }
+            }, { passive: true });
+            var mx = 0, dragging = false;
+            swipeWrap.addEventListener('mousedown', function (e) { mx = e.clientX; dragging = true; });
+            window.addEventListener('mouseup', function (e) {
+                if (!dragging) return;
+                dragging = false;
+                var dx = e.clientX - mx;
+                if (Math.abs(dx) > 80) goTo(dx < 0 ? 1 : -1);
+            });
         }
 
         if (search) {
