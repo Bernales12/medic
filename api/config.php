@@ -20,7 +20,7 @@
 | For a typical single PHP server, option 1 (direct) is fine.
 */
 
-define('DB_HOST', 'db.vxruytsfmgqnwmzdcmmd.supabase.co');
+define('DB_HOST', 'aws-0-ap-northeast-1.pooler.supabase.com');
 define('DB_PORT', '5432');
 define('DB_NAME', 'postgres');
 define('DB_USER', 'postgres.vxruytsfmgqnwmzdcmmd');
