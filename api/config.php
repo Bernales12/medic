@@ -20,11 +20,11 @@
 | For a typical single PHP server, option 1 (direct) is fine.
 */
 
-define('DB_HOST', 'aws-0-ap-northeast-1.pooler.supabase.com');
-define('DB_PORT', '6543');
+define('DB_HOST', 'db.sucjcpduvmibdkhykoye.supabase.co');
+define('DB_PORT', '5432');
 define('DB_NAME', 'postgres');
-define('DB_USER', 'postgres.vxruytsfmgqnwmzdcmmd');
-define('DB_PASS', 'Bernales@#2005!');
+define('DB_USER', 'postgres.sucjcpduvmibdkhykoye');
+define('DB_PASS', 'Bernales@123');
 
 // App settings (unchanged from the original)
 $DEFAULT_LOW_STOCK = 200;
